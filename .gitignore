@@ -1,5 +1,6 @@
 #특정 파일 제외
 *.pdf
+*.zip
 
 
 #jupyter notebook checkpoint 파일 제외
