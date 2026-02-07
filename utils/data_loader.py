@@ -30,13 +30,3 @@ def dedup_clean(words: List[str]) -> List[str]:
         out.append(w)
     return out
 
-"""원본 문자열의 인덱스를 보존하기 위한 유틸리티"""
-def build_norm_with_map(raw: str) -> Tuple[str, List[int]]:
-    if not raw: return "", []
-    raw_l = raw.lower()
-    norm_chars, idx_map = [], []
-    for i, ch in enumerate(raw_l):
-        if re.match(r"[0-9a-z\u3131-\u318e\uac00-\ud7a3]", ch):
-            norm_chars.append(ch)
-            idx_map.append(i)
-    return "".join(norm_chars), idx_map

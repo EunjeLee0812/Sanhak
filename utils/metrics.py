@@ -3,7 +3,7 @@ from rapidfuzz.distance import Levenshtein
 from mecab import MeCab
 
 from utils.normalizer import TextNormalizer
-
+from config.settings import *
 
 _NORMALIZER = None
 _MECAB = None
@@ -22,23 +22,22 @@ def _get_mecab():
 
 
 # CER, WER 계산 함수
-def calculate_cer(ref: str, hyp: str, *, normalizer=None) -> float:
-    normalizer = normalizer or _get_normalizer()
+def calculate_cer(ref: str, hyp: str, normalizer) -> Tuple[float, float, int]:
     r = normalizer.normalize(ref, remove_space=True)
     h = normalizer.normalize(hyp, remove_space=True)
-    if not r: 
-        return 0.0 if not h else 1.0
-    return Levenshtein.distance(r, h) / len(r)
+    # if not r:
+    #     return (0.0 if not h else 1.0), (0.0 if not h else float(len(h))), 0
+    return Levenshtein.distance(r, h) / len(r), Levenshtein.distance(r,h), len(r)
 
-def calculate_wer(ref: str, hyp: str, *, normalizer=None, mecab=None) -> float:
+def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None) -> Tuple[float, float, int,List,List]:
     normalizer = normalizer or _get_normalizer()
     mecab = mecab or _get_mecab()
     r_text = normalizer.normalize(ref, remove_space=False)
     h_text = normalizer.normalize(hyp, remove_space=False)
     r_morphs, h_morphs = mecab.morphs(r_text), mecab.morphs(h_text)
-    if not r_morphs:
-        return 0.0 if not h_morphs else 1.0
-    return Levenshtein.distance(r_morphs, h_morphs) / len(r_morphs)
+    # if not r_morphs:
+    #     return 0.0 if not h_morphs else 1.0
+    return Levenshtein.distance(r_morphs, h_morphs) / len(r_morphs), Levenshtein.distance(r_morphs, h_morphs), len(r_morphs), r_morphs, h_morphs
 
 #인식된 고유명사를 정답 고유명사와 비교해 인식 결과를 교정하는 데 도움을 주는 함수
 def best_proper_noun_match(entity: str, hyp: str, normalizer, tol: int = 2) -> Tuple[float, str]:
