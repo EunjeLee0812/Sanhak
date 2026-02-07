@@ -33,8 +33,8 @@ def calculate_cer(ref: str, hyp: str, *, normalizer=None) -> float:
 def calculate_wer(ref: str, hyp: str, *, normalizer=None, mecab=None) -> float:
     normalizer = normalizer or _get_normalizer()
     mecab = mecab or _get_mecab()
-    r_text = normalizer.normalize(ref, remove_space=True)
-    h_text = normalizer.normalize(hyp, remove_space=True)
+    r_text = normalizer.normalize(ref, remove_space=False)
+    h_text = normalizer.normalize(hyp, remove_space=False)
     r_morphs, h_morphs = mecab.morphs(r_text), mecab.morphs(h_text)
     if not r_morphs:
         return 0.0 if not h_morphs else 1.0

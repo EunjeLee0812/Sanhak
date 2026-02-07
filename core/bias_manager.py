@@ -1,7 +1,7 @@
 import json, random
 from typing import List
 
-#from config.settings import BIAS_ITERATION_CYCLE_SWEEP
+from config.settings import BIAS_ITERATION_CYCLE_SWEEP
 
 
 # ==============================================================================
@@ -15,7 +15,9 @@ class BiasManager:
         with open(db_path, "r", encoding="utf-8") as f:
             self.data = json.load(f)
 
-        #self.data["ref_count"] += 1
+        self.ref_count = self.data.get("ref_count", 0)
+        self.data["ref_count"] += 1
+        # self.session_hit = {}
         self.session_missed = {}
 
     # 통합 인터페이스: 이 함수가 외부 루프에서 호출됩니다.
@@ -98,7 +100,11 @@ class BiasManager:
         return out[:top_k]
 
 
-    
+    def add_hit(self, matched_entities: List[str]):
+        for ent in matched_entities:
+            if ent in self.data["global"]:
+                self.session_missed[ent] = self.session_missed.get(ent, 0) + 1
+   
     #add_hit 지우고 add_miss로 변경 (miss인 경우 가중치 누적)
     def add_miss(self, missed_entities: List[str]):
         for ent in missed_entities:
