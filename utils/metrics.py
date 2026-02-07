@@ -4,11 +4,8 @@ from mecab import MeCab
 
 from utils.normalizer import TextNormalizer
 from config.settings import *
-<<<<<<< HEAD
-=======
 
 import math
->>>>>>> 95be145b3aa5b4fc1708b35c39c16481d5e43dd0
 
 _NORMALIZER = None
 _MECAB = None
