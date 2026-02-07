@@ -5,6 +5,8 @@ from mecab import MeCab
 from utils.normalizer import TextNormalizer
 from config.settings import *
 
+import math
+
 _NORMALIZER = None
 _MECAB = None
 
@@ -40,7 +42,10 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None) -> Tuple[flo
     return Levenshtein.distance(r_morphs, h_morphs) / len(r_morphs), Levenshtein.distance(r_morphs, h_morphs), len(r_morphs)
 
 #인식된 고유명사를 정답 고유명사와 비교해 인식 결과를 교정하는 데 도움을 주는 함수
-def best_proper_noun_match(entity: str, hyp: str, normalizer, tol: int = 2) -> Tuple[float, str]:
+#수정: 고유명사 매칭에서 1글자(너무 짧은 조각)는 후보에서 제외하기
+def best_proper_noun_match(entity: str, hyp: str, normalizer, tol: int = RULE_TOL, min_ratio: float = 0.7, min_abs_len: int = 2) -> Tuple[float, str]:
+    # min ratio: entity 길이 대비 최소 일치 비율 (조각 매칭 방지), min_abs_len: 절대 최소 substring 길이
+    
     normalizer = normalizer or _get_normalizer()
     e = normalizer.normalize(entity, remove_space=True)
     h = normalizer.normalize(hyp, remove_space=True)
@@ -50,8 +55,19 @@ def best_proper_noun_match(entity: str, hyp: str, normalizer, tol: int = 2) -> T
     L = len(e)
     if len(h) <= L: return Levenshtein.distance(e, h) / L, h
 
+    # 수정: 너무 짧은 substring(예: '웅', '왓')이 매칭 후보로 들어오는 것을 차단
+    min_wlen = max(min_abs_len, L - tol, int(math.ceil(L * min_ratio)))
+    max_wlen = min(len(h), L + tol)
+
+    # 추가: 비교 가능한 substring 후보가 아예 없는 경우 (hyp가 너무 짧은 경우), 에러 방지를 위한 fallback
+    if min_wlen > max_wlen:
+        sub = h[:L] # hyp 앞부분만 사용 (길이가 짧으면 있는 만큼)
+        return Levenshtein.distance(e, sub) / L, sub
+
+
     best_score, best_sub = 1.0, ""
-    for wlen in range(max(1, L - RULE_TOL), min(len(h), L + RULE_TOL) + 1):
+    # 수정된 범위: min_wlen 이상만 탐색 for 조각 매칭 방지
+    for wlen in range(min_wlen, max_wlen + 1):
         for i in range(0, len(h) - wlen + 1):
             sub = h[i:i + wlen]
             score = Levenshtein.distance(e, sub) / L
@@ -83,7 +99,10 @@ def evaluate_proper_nouns(
         cer, matched_sub = best_proper_noun_match(entity, hyp_final, normalizer)
 
         cers.append(cer)
-        hyp_pn.append((matched_sub or "").replace(" ", ""))
+        
+        # 수정: 고유명사 결과 정리: 1글자 조각 제거
+        cleaned = (matched_sub or "").replace(" ", "").strip()
+        hyp_pn.append(cleaned if len(cleaned) >= 2 else "")
 
         # ✅ 학습은 hard miss만
         if cer > hard_th:
