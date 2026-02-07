@@ -31,7 +31,7 @@ def calculate_cer(ref: str, hyp: str, normalizer) -> Tuple[float, float, int]:
     #     return (0.0 if not h else 1.0), (0.0 if not h else float(len(h))), 0
     return Levenshtein.distance(r, h) / len(r), Levenshtein.distance(r,h), len(r)
 
-def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None) -> Tuple[float, float, int]:
+def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None) -> Tuple[float, float, int,List,List]:
     normalizer = normalizer or _get_normalizer()
     mecab = mecab or _get_mecab()
     r_text = normalizer.normalize(ref, remove_space=False)
@@ -39,7 +39,7 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None) -> Tuple[flo
     r_morphs, h_morphs = mecab.morphs(r_text), mecab.morphs(h_text)
     # if not r_morphs:
     #     return 0.0 if not h_morphs else 1.0
-    return Levenshtein.distance(r_morphs, h_morphs) / len(r_morphs), Levenshtein.distance(r_morphs, h_morphs), len(r_morphs)
+    return Levenshtein.distance(r_morphs, h_morphs) / len(r_morphs), Levenshtein.distance(r_morphs, h_morphs), len(r_morphs), r_morphs, h_morphs
 
 #인식된 고유명사를 정답 고유명사와 비교해 인식 결과를 교정하는 데 도움을 주는 함수
 #수정: 고유명사 매칭에서 1글자(너무 짧은 조각)는 후보에서 제외하기
