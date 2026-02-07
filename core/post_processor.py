@@ -2,7 +2,7 @@ from typing import Tuple, List, Dict, Any, Optional
 from rapidfuzz.distance import Levenshtein
 from rapidfuzz import fuzz
 from config.settings import RULE_TOL, RULE_GATE, RULE_WRATIO_TH # 상수 import
-from utils.normalizer import build_norm_with_map # 유틸 import
+from utils.normalizer import build_norm_withyp_map # 유틸 import
 
 import math
 
@@ -14,7 +14,7 @@ def best_substring_span_raw(entity: str, hyp_raw: str, normalizer, tolerance: in
     """
     ent = normalizer.normalize(entity)
     if not ent: return None, None, 1.0
-    hyp_norm, hyp_map = build_norm_with_map(hyp_raw)
+    hyp_norm, hyp_map = build_norm_withyp_map(hyp_raw)
     if not hyp_norm: return None, None, 1.0
 
     L = len(ent)
@@ -22,6 +22,20 @@ def best_substring_span_raw(entity: str, hyp_raw: str, normalizer, tolerance: in
         span_cer = Levenshtein.distance(ent, hyp_norm) / L
         start_idx_raw = hyp_map[0] if hyp_map else 0
         end_idx_raw = (hyp_map[-1] + 1) if hyp_map else len(hyp_raw)
+        return start_idx_raw, end_idx_raw, span_cer
+
+# 추가: 너무 짧은 substring 후보(wlen=1 등) 차단
+    min_wlen = max(min_abs_len, L - tolerance, int(math.ceil(L * min_ratio)))
+    max_wlen = min(len(hyp_norm), L + tolerance)
+
+    # 최소로 봐야 하는 길이(min_wlen)가 최대로 볼 수 있는 길이(max_wlen)보다 커서 검색할 후보 자체가 0개인 상황
+    if min_wlen > max_wlen:
+        # fallback: 앞에서 L 길이만 비교 (에러 케이스에서 코드가 죽지 않도록하는 안전장치)
+        # 의도: 이 함수는 실패했지만, ‘hyp 앞부분을 기준으로 봤을 때 entity와 굉장히 다르다’는 정보 반환
+        sub = hyp_norm[:L]
+        span_cer = Levenshtein.distance(ent, sub) / L
+        start_idx_raw = hyp_map[0] if hyp_map else 0
+        end_idx_raw = (hyp_map[min(L - 1, len(hyp_map) - 1)] + 1) if hyp_map else len(hyp_raw)
         return start_idx_raw, end_idx_raw, span_cer
 
     best = 1.0
