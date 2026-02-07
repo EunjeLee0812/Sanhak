@@ -2,7 +2,6 @@
 *.pdf
 *.zip
 *.csv
-*.ini
 
 #jupyter notebook checkpoint 파일 제외
 .ipynb_checkpoints/
