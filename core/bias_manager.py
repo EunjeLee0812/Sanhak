@@ -2,6 +2,7 @@ import json, random
 from typing import List
 
 from config.settings import BIAS_WEIGHT_UPDATE_CYCLE_SWEEP
+from config.settings import BIAS_WEIGHT_UPDATE_CYCLE_SWEEP
 
 
 # ==============================================================================

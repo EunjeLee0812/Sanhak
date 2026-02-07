@@ -18,6 +18,12 @@ AUDIO_FOLDER = "/teamspace/studios/this_studio/Sanhak/voice_record"
 TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/Sanhak/transcripts.json"
 BIAS_PATH = "/teamspace/studios/this_studio/Sanhak/lists/biasing_list.json"
 
+BASE_DIR="/teamspace/studios/this_studio/" 
+RESULTS_DIR = "/teamspace/studios/this_studio/results"
+AUDIO_FOLDER = "/teamspace/studios/this_studio/voice_record"
+TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/transcripts.json"
+BIAS_PATH = "/teamspace/studios/this_studio/lists/biasing_list.json"
+
 
 # ==============================================================================
 # 2. 실험 변수 (Hyper-parameters)
@@ -26,8 +32,8 @@ HOTWORD_TOPK_SWEEP = [20] #20고정
 BIAS_WEIGHT_UPDATE_CYCLE_SWEEP = [2]  # 학습 반복 횟수
 POSTPROCESS_SWEEP = [1] # 0: OFF, 1: ON
 HOTWORD_STRATEGY_SWEEP = [2] # 1: Random, 2: Hybrid 2로 고정
-RESET_BIASING_LIST=1 #BIAS_ITERATION_SWEEP[index]만큼의 학습 회차를 돈 후 다음 biasing_list를 초기화할지 [0:OFF, 1:ON]
-AUDIO_FILE_MAX= 10              # 사용할 최대 AUDIO FILE의 개수
+RESET_BIASING_LIST=0 #BIAS_ITERATION_SWEEP[index]만큼의 학습 회차를 돈 후 다음 biasing_list를 초기화할지 [0:OFF, 1:ON]
+AUDIO_FILE_MAX= 3              # 사용할 최대 AUDIO FILE의 개수
 
 # ==============================================================================
 # 3. 모델 및 로직 설정

@@ -4,7 +4,11 @@ from rapidfuzz import fuzz
 from config.settings import RULE_TOL, RULE_GATE, RULE_WRATIO_TH # 상수 import
 from utils.normalizer import build_norm_with_map # 유틸 import
 
-def best_substring_span_raw(entity: str, hyp_raw: str, normalizer, tolerance: int = RULE_TOL) -> Tuple[Optional[int], Optional[int], float]:
+import math
+
+def best_substring_span_raw(entity: str, hyp_raw: str, normalizer, tolerance: int = 2, min_ratio: float = 0.7, min_abs_len: int = 2) -> Tuple[Optional[int], Optional[int], float]:
+    
+    #수정: 정답과 가장 유사한 substring이 너무 짧은 경우 방지; min_ratio: entity 길이 대비 최소 비율, min_abs: 절대 최소 길이
     """
     [주의] normalizer 객체를 인자로 받도록 수정하여 의존성 주입, span : 단어
     """
@@ -39,8 +43,9 @@ def best_substring_span_raw(entity: str, hyp_raw: str, normalizer, tolerance: in
     end_idx_raw = (hyp_map[end_idx_raw] + 1) if end_idx_raw < len(hyp_map) else len(hyp_raw)
     return start_idx_raw, end_idx_raw, best
 
-def postprocess_with_hotwords(hyp_raw: str, hotwords: List[str], normalizer, gate: float = RULE_GATE, 
-    tol: int = RULE_TOL, wratio_th: int = RULE_WRATIO_TH) -> Tuple[str, List[Dict[str, Any]]]:
+def postprocess_with_hotwords(hyp_raw: str, hotwords: List[str], normalizer, gate: float = RULE_GATE, tol: int = RULE_TOL, wratio_th: int = RULE_WRATIO_TH, min_ratio: float = 0.7, min_abs_len: int = 2) -> Tuple[str, List[Dict[str, Any]]]:
+    
+    #수정: 정답과 가장 유사한 substring이 너무 짧은 경우 방지; min_ratio:  hw 길이 대비 surface 최소 비율, min_abs: 절대 최소 길이
     
     if not hyp_raw or not hotwords: return hyp_raw, []
     sorted_hotwords = sorted(hotwords, key=len, reverse=True)
@@ -51,16 +56,21 @@ def postprocess_with_hotwords(hyp_raw: str, hotwords: List[str], normalizer, gat
         # normalizer 객체 전달
         start_idx, end_idx, cer = best_substring_span_raw(hw, hyp_pp, normalizer, tolerance=tol)
         
-        #gate 값보다 오차율이 높으면 패스
         if start_idx is None or end_idx is None or cer > gate: continue
-
         surface = hyp_pp[start_idx:end_idx]
-
-        #정답 고유명사와 동일하다면 패스
-        if normalizer.normalize(surface) == normalizer.normalize(hw): continue
         
-        # WRatio 값보다 유사도가 낮다면 패
-        similarity_score = fuzz.WRatio(surface, hw)
+        # 수정: normalize 기준 통일(공백 제거)
+        surf_n = normalizer.normalize(surface, remove_space=True)
+        hw_n   = normalizer.normalize(hw, remove_space=True)
+
+        # 추가: 조각 치환 방지(너무 짧으면 skip)
+        if len(surf_n) < min_abs_len: continue
+        if len(surf_n) < int(math.ceil(len(hw_n) * min_ratio)): continue
+
+        if surf_n == hw_n: continue
+        
+        # 수정: 유사도도 normalize 기준으로 계산
+        similarity_score = fuzz.WRatio(surf_n, hw_n)
         if similarity_score < wratio_th: continue
         
         hyp_pp = hyp_pp[:start_idx] + hw + hyp_pp[end_idx:]
