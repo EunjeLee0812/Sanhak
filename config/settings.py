@@ -1,24 +1,33 @@
 ﻿import os
 
 # ==============================================================================
-# 1. 경로 설정(COLAB 웹사이트 사용 시 변경해야하는 부분)
+# 1. COLAB용 경로
+# # ==============================================================================
+# BASE_DIR="/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/" 
+# RESULTS_DIR = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/results"
+# AUDIO_FOLDER = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/voice_record"
+# TRANSCRIPTS_PATH = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/transcripts.json"
+# BIAS_PATH = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/lists/biasing_list.json"
+
 # ==============================================================================
-BASE_DIR="/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/" 
-RESULTS_DIR = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/results"
-AUDIO_FOLDER = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/voice_record"
-TRANSCRIPTS_PATH = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/transcripts.json"
-BIAS_PATH = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/lists/biasing_list.json"
+# 2. lighteningAI용 서원렬 경로
+# ==============================================================================
+BASE_DIR="/teamspace/studios/this_studio/" 
+RESULTS_DIR = "/teamspace/studios/this_studio/results"
+AUDIO_FOLDER = "/teamspace/studios/this_studio/voice_record"
+TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/transcripts.json"
+BIAS_PATH = "/teamspace/studios/this_studio/lists/biasing_list.json"
+
 
 # ==============================================================================
 # 2. 실험 변수 (Hyper-parameters)
 # ==============================================================================
 HOTWORD_TOPK_SWEEP = [20] #20고정
-#BIAS_ITERATION_CYCLE_SWEEP = [3]  # 학습 반복 횟수
-BIAS_UPDATE_ITERATION=3 
+BIAS_WEIGHT_UPDATE_CYCLE_SWEEP = [2]  # 학습 반복 횟수
 POSTPROCESS_SWEEP = [1] # 0: OFF, 1: ON
 HOTWORD_STRATEGY_SWEEP = [2] # 1: Random, 2: Hybrid 2로 고정
 RESET_BIASING_LIST=0 #BIAS_ITERATION_SWEEP[index]만큼의 학습 회차를 돈 후 다음 biasing_list를 초기화할지 [0:OFF, 1:ON]
-AUDIO_FILE_MAX= 5              # 사용할 최대 AUDIO FILE의 개수
+AUDIO_FILE_MAX= 3              # 사용할 최대 AUDIO FILE의 개수
 
 # ==============================================================================
 # 3. 모델 및 로직 설정

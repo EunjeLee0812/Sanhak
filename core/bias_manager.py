@@ -1,7 +1,7 @@
 import json, random
 from typing import List
 
-from config.settings import BIAS_ITERATION_CYCLE_SWEEP
+from config.settings import BIAS_WEIGHT_UPDATE_CYCLE_SWEEP
 
 
 # ==============================================================================
@@ -134,8 +134,5 @@ class BiasManager:
         with open(self.db_path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         print("[LEARNING] 가중치 데이터베이스 저장 완료.")
-
-        # ✅ 다음 iteration을 위해 초기화(중복 반영 방지)
-        self.session_missed = {}
 
         print(f"\n[LEARNING] iteration마다 누적 저장 완료. (ref_count={self.data['ref_count']})")
