@@ -124,7 +124,7 @@ def evaluate_proper_nouns(
     return: (pn_recall, avg_pn_cer, hyp_pn(로그용), hard_missed(학습용))
     """
     if not ents:
-        return 0.0, 0.0, [], []
+        return None, None, [], []
 
     cers: List[float] = []
     hyp_pn: List[str] = []
