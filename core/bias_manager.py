@@ -1,7 +1,7 @@
 import json, random
 from typing import List
 
-from config.settings import BIAS_WEIGHT_UPDATE_CYCLE_SWEEP
+from config.settings import BIAS_WEIGHT_UPDATE_ITERATION_SWEEP
 
 
 # ==============================================================================
@@ -98,12 +98,6 @@ class BiasManager:
                         out.append(w)
 
         return out[:top_k]
-
-
-    def add_hit(self, matched_entities: List[str]):
-        for ent in matched_entities:
-            if ent in self.data["global"]:
-                self.session_missed[ent] = self.session_missed.get(ent, 0) + 1
    
     #add_hit 지우고 add_miss로 변경 (miss인 경우 가중치 누적)
     def add_miss(self, missed_entities: List[str]):
@@ -131,8 +125,11 @@ class BiasManager:
             for word, count in self.session_missed.items():
                 self.data["global"][word] += count
 
+        # 추가: finalize에 반영했으니 세션 miss는 비워야 함 (중복 누적 방지)
+        self.session_missed = {}
+
         with open(self.db_path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         print("[LEARNING] 가중치 데이터베이스 저장 완료.")
 
-        print(f"\n[LEARNING] {bias_weight_update_cnt}회마다 누적 저장 완료. (반복횟수={self.data['ref_count']})")
+        print(f"\n[LEARNING] {bias_weight_update_cnt}회차 누적 저장 완료. (반복횟수={self.data['ref_count']})")
