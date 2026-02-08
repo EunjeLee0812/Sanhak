@@ -1,7 +1,7 @@
 import json, random
 from typing import List
 
-from config.settings import BIAS_WEIGHT_UPDATE_CYCLE_SWEEP
+from config.settings import BIAS_WEIGHT_UPDATE_ITERATION_SWEEP
 
 
 # ==============================================================================
@@ -132,4 +132,4 @@ class BiasManager:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         print("[LEARNING] 가중치 데이터베이스 저장 완료.")
 
-        print(f"\n[LEARNING] {bias_weight_update_cnt}회마다 누적 저장 완료. (반복횟수={self.data['ref_count']})")
+        print(f"\n[LEARNING] {bias_weight_update_cnt}회차 누적 저장 완료. (반복횟수={self.data['ref_count']})")
