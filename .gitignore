@@ -5,6 +5,7 @@
 *.ini
 *.mp4
 lists/biasing_list.json
+biasing_list.json
 __init__.py
 
 
