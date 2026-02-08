@@ -75,7 +75,7 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
     final_hyp_morphs = [protected_map_hyp_ents.get(m, m) for m in hyp_morphs]    
     # if not ref_morphs:
     #     return 0.0 if not hyp_morphs else 1.0
-    return Levenshtein.distance(final_ref_morphs, final_hyp_morphs) / len(final_ref_morphs), Levenshtein.distance(ref_morphs, hyp_morphs), len(final_ref_morphs), final_ref_morphs, final_hyp_morphs
+    return Levenshtein.distance(final_ref_morphs, final_hyp_morphs) / len(final_ref_morphs), Levenshtein.distance(final_ref_morphs, final_hyp_morphs), len(final_ref_morphs), final_ref_morphs, final_hyp_morphs
 
 #인식된 고유명사를 정답 고유명사와 비교해 인식 결과를 교정하는 데 도움을 주는 함수
 #수정: 고유명사 매칭에서 1글자(너무 짧은 조각)는 후보에서 제외하기
