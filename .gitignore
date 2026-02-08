@@ -4,8 +4,10 @@
 *.csv
 *.ini
 *.mp4
-lists/biasing_list.json
+*.pyc
+biasing_list.json
 __init__.py
+
 
 
 #jupyter notebook checkpoint 파일 제외
