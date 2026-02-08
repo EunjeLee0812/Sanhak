@@ -39,7 +39,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 agg[key] = {
                     "count": 0, 
                     # "bias_weight_update_cnt": 0, 
-                    "hotwords":"",
+                    # "hotwords":"",
                     "total_wrong_char_cnt": 0, "total_char_cnt": 0,
                     "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
                     "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0
@@ -53,7 +53,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             g["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0)) # 변수명 확인 (wrong_morpheme_cnt)
             g["total_morph_cnt"] += float(r.get("morph_cnt", 0))          # 변수명 확인 (morpheme_cnt)
             # g["bias_weight_update_cnt"]=r.get("bias_weight_update_cnt",0)
-            g["hotwords"]=r.get("hotwords","")
+            # g["hotwords"]=r.get("hotwords","")
 
             # PN 지표는 값이 있는 경우(None이 아닌 경우)에만 합산
             if r.get("pn_recall") is not None:
@@ -64,9 +64,9 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
         # 3. 요약 데이터 리스트 생성
         # ----------------------------------------------------------------------
         summary_rows = []
-        sorted_keys = sorted(agg.keys())
+        # sorted_keys = sorted(agg.keys())
 
-        for key in sorted_keys:
+        for key in agg:
             top_k, pp_on, strat, bias_cnt, hotwords= key
             stats = agg[key]
             
