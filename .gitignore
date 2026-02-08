@@ -4,8 +4,7 @@
 *.csv
 *.ini
 *.mp4
-
-biasing_list.json
+lists/biasing_list.json
 __init__.py
 
 
