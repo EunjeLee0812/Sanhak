@@ -119,7 +119,7 @@ def evaluate_proper_nouns(
     normalizer,
     match_th: float = PN_MATCH_TH,
     hard_th: float = HARD_MISS_TH
-) -> Tuple[float, float, List[str], List[str]]:
+) -> Tuple[Optional[float], Optional[float], List[str], List[str]]: #수정: 엔티티가 없는 경우 pn_recall = 0이 됨 -> None 반환해서 집계에서 제외
     """
     return: (pn_recall, avg_pn_cer, hyp_pn(로그용), hard_missed(학습용))
     """
