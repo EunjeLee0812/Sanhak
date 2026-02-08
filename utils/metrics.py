@@ -5,7 +5,7 @@ from mecab import MeCab
 from utils.normalizer import TextNormalizer
 from config.settings import *
 
-import math
+import math, string
 
 _NORMALIZER = None
 _MECAB = None
@@ -31,23 +31,59 @@ def calculate_cer(ref: str, hyp: str, normalizer) -> Tuple[float, float, int]:
     #     return (0.0 if not h else 1.0), (0.0 if not h else float(len(h))), 0
     return Levenshtein.distance(r, h) / len(r), Levenshtein.distance(r,h), len(r)
 
-def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None) -> Tuple[float, float, int,List,List]:
+def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:List[str]=[],hyp_ents:List[str]=[])-> Tuple[float, float, int,List,List]:
     normalizer = normalizer or _get_normalizer()
     mecab = mecab or _get_mecab()
-    r_text = normalizer.normalize(ref, remove_space=False)
-    h_text = normalizer.normalize(hyp, remove_space=False)
-    r_morphs, h_morphs = mecab.morphs(r_text), mecab.morphs(h_text)
-    # if not r_morphs:
-    #     return 0.0 if not h_morphs else 1.0
-    return Levenshtein.distance(r_morphs, h_morphs) / len(r_morphs), Levenshtein.distance(r_morphs, h_morphs), len(r_morphs), r_morphs, h_morphs
+
+    ref_text = normalizer.normalize(ref, remove_space=False)
+    hyp_text = normalizer.normalize(hyp, remove_space=False)
+
+    # 2. 고유명사 보호 (Masking)
+    # ref_ents, hyp_ents 리스트에 있는 단어들을 Mecab이 쪼개지 못하도록 치환
+    # 예: "제이티비씨" -> "UNKTOKEN0"
+    protected_map_ref_ents = {}
+    if ref_ents:
+        # 긴 단어부터 치환해야 함
+        sorted_ents = sorted(ref_ents, key=len, reverse=True)
+        for i, ref_ent in enumerate(sorted_ents):
+            ent_norm = normalizer.normalize(ref_ent, remove_space=True)
+            token = f"PROT{string.ascii_uppercase[i]}"
+            protected_map_ref_ents[token] = ent_norm
+            
+            # 텍스트에서 치환
+            ref_text = ref_text.replace(ent_norm, token)
+
+    protected_map_hyp_ents = {}
+    if hyp_ents:
+        # 긴 단어부터 치환해야 함
+        sorted_hyp_ents = sorted(hyp_ents, key=len, reverse=True)
+        for i, hyp_ent in enumerate(sorted_hyp_ents):
+            hyp_ent_norm = normalizer.normalize(hyp_ent, remove_space=True)
+            token = f"PROT{string.ascii_uppercase[i]}"
+            protected_map_hyp_ents[token] = hyp_ent_norm
+            
+            # 텍스트에서 치환
+            hyp_text = hyp_text.replace(hyp_ent_norm, token)
+            
+    ref_morphs, hyp_morphs = mecab.morphs(ref_text), mecab.morphs(hyp_text)
+    
+    print(protected_map_hyp_ents, hyp_morphs)
+    
+    # 3. 보호된 토큰 복원 (Unmasking)
+    # ['SPECIALent0', '틀어줘'] -> ['제이티비씨', '틀어줘']
+    final_ref_morphs = [protected_map_ref_ents.get(m, m) for m in ref_morphs]
+    final_hyp_morphs = [protected_map_hyp_ents.get(m, m) for m in hyp_morphs]    
+    # if not ref_morphs:
+    #     return 0.0 if not hyp_morphs else 1.0
+    return Levenshtein.distance(final_ref_morphs, final_hyp_morphs) / len(final_ref_morphs), Levenshtein.distance(ref_morphs, hyp_morphs), len(final_ref_morphs), final_ref_morphs, final_hyp_morphs
 
 #인식된 고유명사를 정답 고유명사와 비교해 인식 결과를 교정하는 데 도움을 주는 함수
 #수정: 고유명사 매칭에서 1글자(너무 짧은 조각)는 후보에서 제외하기
-def best_proper_noun_match(entity: str, hyp: str, normalizer, tol: int = RULE_TOL, min_ratio: float = 0.7, min_abs_len: int = 2) -> Tuple[float, str]:
-    # min ratio: entity 길이 대비 최소 일치 비율 (조각 매칭 방지), min_abs_len: 절대 최소 substring 길이
+def best_proper_noun_match(ent: str, hyp: str, normalizer, tol: int = RULE_TOL, min_ratio: float = 0.7, min_abs_len: int = 2) -> Tuple[float, str]:
+    # min ratio: ent 길이 대비 최소 일치 비율 (조각 매칭 방지), min_abs_len: 절대 최소 substring 길이
     
     normalizer = normalizer or _get_normalizer()
-    e = normalizer.normalize(entity, remove_space=True)
+    e = normalizer.normalize(ent, remove_space=True)
     h = normalizer.normalize(hyp, remove_space=True)
     if not e: return 0.0, ""
     if not h: return 1.0, ""
@@ -78,7 +114,7 @@ def best_proper_noun_match(entity: str, hyp: str, normalizer, tol: int = RULE_TO
 
 #인식된 고유명사의 recall, avg_pn_cer, matched_texts(교정된 인식 고유명사) 값 반환
 def evaluate_proper_nouns(
-    entities: List[str],
+    ents: List[str],
     hyp_final: str,
     normalizer,
     match_th: float = PN_MATCH_TH,
@@ -87,16 +123,16 @@ def evaluate_proper_nouns(
     """
     return: (pn_recall, avg_pn_cer, hyp_pn(로그용), hard_missed(학습용))
     """
-    if not entities:
+    if not ents:
         return 0.0, 0.0, [], []
 
     cers: List[float] = []
     hyp_pn: List[str] = []
     hard_missed: List[str] = []
 
-    for entity in entities:
+    for ent in ents:
         # ✅ normalizer 반드시 전달
-        cer, matched_sub = best_proper_noun_match(entity, hyp_final, normalizer)
+        cer, matched_sub = best_proper_noun_match(ent, hyp_final, normalizer)
 
         cers.append(cer)
         
@@ -106,7 +142,7 @@ def evaluate_proper_nouns(
 
         # ✅ 학습은 hard miss만
         if cer > hard_th:
-            hard_missed.append(entity)
+            hard_missed.append(ent)
 
     pn_recall = sum(c <= match_th for c in cers) / len(cers)
     avg_pn_cer = sum(cers) / len(cers)

@@ -2,7 +2,7 @@ from typing import Tuple, List, Dict, Any, Optional
 from rapidfuzz.distance import Levenshtein
 from rapidfuzz import fuzz
 from config.settings import RULE_TOL, RULE_GATE, RULE_WRATIO_TH # 상수 import
-from utils.normalizer import build_norm_withyp_map # 유틸 import
+from utils.normalizer import build_norm_with_map # 유틸 import
 
 import math
 
@@ -14,7 +14,7 @@ def best_substring_span_raw(entity: str, hyp_raw: str, normalizer, tolerance: in
     """
     ent = normalizer.normalize(entity)
     if not ent: return None, None, 1.0
-    hyp_norm, hyp_map = build_norm_withyp_map(hyp_raw)
+    hyp_norm, hyp_map = build_norm_with_map(hyp_raw)
     if not hyp_norm: return None, None, 1.0
 
     L = len(ent)
