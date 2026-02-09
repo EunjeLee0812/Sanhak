@@ -47,6 +47,9 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
         sorted_ents = sorted(ref_ents, key=len, reverse=True)
         for i, ref_ent in enumerate(sorted_ents):
             ent_norm = normalizer.normalize(ref_ent, remove_space=True)
+            #예외처리
+            if ent_norm=="": continue
+
             token = f"PROT{string.ascii_uppercase[i]}"
             protected_map_ref_ents[token] = ent_norm
             
@@ -59,6 +62,9 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
         sorted_hyp_ents = sorted(hyp_ents, key=len, reverse=True)
         for i, hyp_ent in enumerate(sorted_hyp_ents):
             hyp_ent_norm = normalizer.normalize(hyp_ent, remove_space=True)
+
+            if hyp_ent_norm=="": continue
+
             token = f"PROT{string.ascii_uppercase[i]}"
             protected_map_hyp_ents[token] = hyp_ent_norm
             
