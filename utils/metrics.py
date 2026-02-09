@@ -34,7 +34,7 @@ def get_correction_threshold(length: int) -> float:
         return 0.8  # 3글자: 2글자 틀리는것까지 수집 (0.33 <= 0.35)
     elif length == 4:
         return 0.8  # 4글자: 3글자 틀림(0.25)까지 수집 (0.25 <= 0.26)
-    elif length == 5
+    elif length == 5:
         return 0.65  # 5글자: 3글자 틀리는것까지 수집
     else:
         return 0.5  # 6글자 이상: 절반까지 틀리는거 허용
@@ -141,7 +141,7 @@ def evaluate_proper_nouns(
     hyp_final: str,
     normalizer,
     match_th: float = PN_MATCH_TH,
-    hard_th: float = HARD_MISS_TH
+    # soft_th: float = SOFT_MISS_TH
 ) -> Tuple[Optional[float], float, int, Optional[float], int, int, float, List[str], List[str]]: #수정: 엔티티가 없는 경우 pn_recall = 0이 됨 -> None 반환해서 집계에서 제외
     """
     고유명사(Entities) 인식 성능을 평가하는 함수.
@@ -202,7 +202,7 @@ def evaluate_proper_nouns(
       avg_pn_cer = 0.0  
     pn_wer=total_wrong_hyp_ents_cnt/total_ents_cnt
     
-    return pn_recall, total_wrong_pn_char_cnt, total_pn_char_cnt, avg_pn_cer, total_wrong_hyp_ents_cnt, total_ents_cnt, pn_wer, hyp_pn, hard_missed
+    return pn_recall, total_wrong_pn_char_cnt, total_pn_char_cnt, avg_pn_cer, total_wrong_hyp_ents_cnt, total_ents_cnt, pn_wer, hyp_pn, soft_missed
         
 
 
