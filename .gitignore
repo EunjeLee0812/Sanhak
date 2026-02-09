@@ -3,6 +3,7 @@
 *.zip
 *.csv
 *.ini
+*.mp4
 *.pyc
 __pycache__/
 biasing_list.json
