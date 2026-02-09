@@ -1,0 +1,8 @@
+# 음성 인식 관련
+faster-whisper
+
+# 한국어 음소 변환 (Grapheme-to-Phoneme)
+g2pk
+
+# 문자열 유사도 및 편집 거리 계산 (Levenshtein 포함)
+rapidfuzz
