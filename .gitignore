@@ -12,3 +12,4 @@ makelist.py
 # jupyter notebook 관련
 .ipynb_checkpoints/
 *.ipynb
+!main.ipynb
