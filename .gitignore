@@ -12,4 +12,5 @@ __init__.py
 
 #jupyter notebook checkpoint 파일 제외
 .ipynb_checkpoints/
-*.ipynb filter=strip-notebook-output
+*.ipynb filter=strip-notebook-output.DS_Store
+makelist.py
