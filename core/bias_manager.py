@@ -119,7 +119,7 @@ class BiasManager:
 
         print(f"[SUCCESS] {path} 데이터가 모두 0으로 초기화되었습니다.")
 
-    def finalize(self, repeat]):
+    def finalize(self, repeat):
         # ✅ 매 iteration마다 누적 반영
         if self.session_missed:
             for word, count in self.session_missed.items():
