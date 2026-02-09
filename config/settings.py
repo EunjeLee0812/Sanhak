@@ -15,7 +15,7 @@
 BASE_DIR="/teamspace/studios/this_studio/Sanhak" 
 RESULTS_DIR = "/teamspace/studios/this_studio/Sanhak/results"
 AUDIO_FOLDER = "/teamspace/studios/this_studio/Sanhak/New_Audio_Files"
-TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/Sanhak/voice_record/Audio_files/transcripts.json"
+TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/Sanhak/transcripts.json"
 BIAS_PATH = "/teamspace/studios/this_studio/Sanhak/lists/biasing_list.json"
 
 # ==============================================================================
@@ -46,3 +46,4 @@ RULE_TOL = 2
 #가중치 업데이트 관련 파라미터 추가
 PN_MATCH_TH   = float(os.environ.get("PN_MATCH_TH", "0.20"))   # pn_recall 계산용
 HARD_MISS_TH  = float(os.environ.get("HARD_MISS_TH", "0.50"))  # 학습용 hard miss 기준
+SOFT_MISS_TH = float(os.environ.get("HARD_MISS_TH", "0.50"))  # 학습용 hard miss 기준
