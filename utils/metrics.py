@@ -119,21 +119,35 @@ def evaluate_proper_nouns(
     normalizer,
     match_th: float = PN_MATCH_TH,
     hard_th: float = HARD_MISS_TH
-) -> Tuple[Optional[float], Optional[float], List[str], List[str]]: #수정: 엔티티가 없는 경우 pn_recall = 0이 됨 -> None 반환해서 집계에서 제외
+) -> Tuple[Optional[float], float, int, Optional[float], int, int, float, List[str], List[str]]: #수정: 엔티티가 없는 경우 pn_recall = 0이 됨 -> None 반환해서 집계에서 제외
     """
     return: (pn_recall, avg_pn_cer, hyp_pn(로그용), hard_missed(학습용))
     """
     if not ents:
-        return None, None, [], []
+        return None, 0.0,0,None,0,0,0.0, [], []
 
     cers: List[float] = []
     hyp_pn: List[str] = []
     hard_missed: List[str] = []
+    #전체 pn_ents 수
+    #PN_WER 계산 변수
+    total_ents_cnt=len(ents)
+    total_wrong_hyp_ents_cnt=0
+    #PN_CER 계산 변수
+    total_wrong_pn_char_cnt=0
+    total_pn_char_cnt=0
 
     for ent in ents:
         # ✅ normalizer 반드시 전달
         cer, matched_sub = best_proper_noun_match(ent, hyp_final, normalizer)
 
+        #고유명사 CER 계산용 분자, 분모 계산
+        total_pn_char_cnt+=len(ent)
+        total_wrong_pn_char_cnt+=Levenshtein.distance(ent,matched_sub)*len(ent)
+
+        #hyp_ent가 틀렸으면 틀린 단어 개수에 추가
+        if cer>0.01: total_wrong_hyp_ents_cnt+=1
+        
         cers.append(cer)
         
         # 수정: 고유명사 결과 정리: 1글자 조각 제거
@@ -146,5 +160,6 @@ def evaluate_proper_nouns(
 
     pn_recall = sum(c <= match_th for c in cers) / len(cers)
     avg_pn_cer = sum(cers) / len(cers)
+    pn_wer=total_wrong_hyp_ents_cnt/total_ents_cnt
 
-    return pn_recall, avg_pn_cer, hyp_pn, hard_missed
+    return pn_recall, total_wrong_pn_char_cnt, total_pn_char_cnt, avg_pn_cer, total_wrong_hyp_ents_cnt, total_ents_cnt, pn_wer, hyp_pn, hard_missed

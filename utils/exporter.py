@@ -29,7 +29,9 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
             "total_pn_hits": 0.0, "total_pn_ents": 0, # Recall용 (분자/분모)
             "total_wrong_pn_char_cnt": 0.0, "total_pn_char_cnt": 0, # CER용 (분자/분모)
-            "file_count": 0
+            "total_wrong_pn_morph_cnt": 0.0, "total_pn_morph_cnt": 0, # WER용 (분자/분모)
+            "file_count": 0, "pn_count":0, #None이 아닌 pn_recall 개수,
+            "pn_recall_sum":0
         }
 
         for r in rows:
@@ -51,6 +53,8 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                     # "hotwords":"",
                     "total_wrong_char_cnt": 0, "total_char_cnt": 0,
                     "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
+                    "total_wrong_pn_char_cnt": 0, "total_pn_char_cnt": 0,
+                    "total_wrong_pn_morph_cnt": 0, "total_pn_morph_cnt": 0,
                     "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0
                 }
 
@@ -59,8 +63,15 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             g["count"] += 1
             g["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
             g["total_char_cnt"] += float(r.get("char_cnt", 0))
-            g["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0)) # 변수명 확인 (wrong_morpheme_cnt)
-            g["total_morph_cnt"] += float(r.get("morph_cnt", 0))          # 변수명 확인 (morpheme_cnt)
+
+            g["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0)) 
+            g["total_morph_cnt"] += float(r.get("morph_cnt", 0))         
+
+            g["total_wrong_pn_char_cnt"] += float(r.get("wrong_pn_char_cnt", 0)) 
+            g["total_pn_char_cnt"] += float(r.get("pn_char_cnt", 0))        
+
+            g["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0)) 
+            g["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))        
             # g["bias_weight_update_cnt"]=r.get("bias_weight_update_cnt",0)
             # g["hotwords"]=r.get("hotwords","")
 
@@ -69,13 +80,23 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 g["pn_recall_sum"] += float(r["pn_recall"])
                 g["pn_cer_sum"] += float(r["pn_cer"])
                 g["pn_count"] += 1
+                gt["pn_recall_sum"]+=float(r["pn_recall"])
+                gt["pn_count"]+=1
 
             # (2) 전체 합계 집계 (Grand Total용)
             gt["file_count"] += 1
+            #전체 CER
             gt["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
             gt["total_char_cnt"] += float(r.get("char_cnt", 0))
+            #전체 WER
             gt["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0))
             gt["total_morph_cnt"] += float(r.get("morph_cnt", 0))
+            #전체 고유명사 CER
+            gt["total_wrong_pn_char_cnt"] += float(r.get("wrong_pn_char_cnt", 0))
+            gt["total_pn_char_cnt"] += float(r.get("pn_char_cnt", 0))
+            #전체 고유명사 CER
+            gt["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0))
+            gt["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))
 
                 # PN 지표 정밀 계산 (역산 로직)
             # rows에 'ref_text_pn'(정답 리스트)이 있으므로 이를 이용해 분모를 구함
@@ -85,13 +106,17 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 n_ents = len(ents)
                 gt["total_pn_ents"] += n_ents
                 gt["total_pn_hits"] += float(r["pn_recall"]) * n_ents
-                
+
                 # CER: 분자(편집거리) = 비율 * 전체글자수
                 # 글자수는 공백 제거 기준으로 추산 (normalizer가 없으므로 근사치 사용)
                 n_chars = sum(len(str(e).replace(" ", "")) for e in ents)
                 gt["total_pn_char_cnt"] += n_chars
                 gt["total_wrong_pn_char_cnt"] += float(r["pn_cer"]) * n_chars
 
+                # WER: 분자(편집거리) = 비율 * 전체단어(형태소)수
+                # 글자수는 공백 제거 기준으로 추산 (normalizer가 없으므로 근사치 사용)
+                # gt["total_morph_cnt"] += n_ents
+                # gt["total_wrong_morph_cnt"] += float(r["pn_wer"]) * n_ents
         # 3. 요약 데이터 리스트 생성
         # ----------------------------------------------------------------------
         summary_rows = []
@@ -107,11 +132,12 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             # Global Average 계산
             global_cer = stats["total_wrong_char_cnt"] / stats["total_char_cnt"] if stats["total_char_cnt"] > 0 else 0.0
             global_wer = stats["total_wrong_morph_cnt"] / stats["total_morph_cnt"] if stats["total_morph_cnt"] > 0 else 0.0
-            
+
             # PN 지표 (Macro Average)
-            avg_pn_recall = stats["pn_recall_sum"] / stats["pn_count"] if stats["pn_count"] > 0 else 0.0
-            avg_pn_cer = stats["pn_cer_sum"] / stats["pn_count"] if stats["pn_count"] > 0 else 0.0
-            
+            global_pn_recall = stats["pn_recall_sum"] / stats["pn_count"] if stats["pn_count"] > 0 else 0.0
+            global_pn_cer = stats["total_wrong_pn_char_cnt"] / stats["total_pn_char_cnt"] if stats["total_pn_char_cnt"] > 0 else 0.0
+            global_pn_wer = stats["total_wrong_pn_morph_cnt"] / stats["total_pn_morph_cnt"] if stats["total_pn_morph_cnt"] > 0 else 0.0            
+                
             summary_row = {
                 "file": "Total_Average", # 파일명 대신 요약임을 표시
                 "top_k": top_k,
@@ -122,23 +148,29 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 
                 "cer": f"{global_cer:.4f}",
                 "wer": f"{global_wer:.4f}",
-                "pn_recall": f"{avg_pn_recall:.4f}",
-                "pn_cer": f"{avg_pn_cer:.4f}",
+                "pn_recall": f"{global_pn_recall:.4f}",
+                "pn_cer": f"{global_pn_cer:.4f}",
+                "pn_wer": f"{global_pn_wer:.4f}",
                 
                 # [중요] Summary에만 존재하는 필드들
                 "replog": f"Total Files: {stats['count']}",
                 "total_wrong_char_cnt": stats["total_wrong_char_cnt"],
                 "total_char_cnt": stats["total_char_cnt"],
                 "total_wrong_morph_cnt": stats["total_wrong_morph_cnt"],
-                "total_morph_cnt": stats["total_morph_cnt"]
+                "total_morph_cnt": stats["total_morph_cnt"],
+                "total_wrong_pn_morph_cnt": stats["total_wrong_pn_morph_cnt"],
+                "total_pn_morph_cnt": stats["total_pn_morph_cnt"]
             }
             summary_rows.append(summary_row)
 
         # (2) 최종 요약 (Grand Total) - 맨 마지막에 추가
         grand_cer = gt["total_wrong_char_cnt"] / gt["total_char_cnt"] if gt["total_char_cnt"] > 0 else 0.0
         grand_wer = gt["total_wrong_morph_cnt"] / gt["total_morph_cnt"] if gt["total_morph_cnt"] > 0 else 0.0
-        grand_pn_recall = gt["total_pn_hits"] / gt["total_pn_ents"] if gt["total_pn_ents"] > 0 else 0.0
+        
+        # PN 지표 (Macro Average)
+        grand_pn_recall = gt["pn_recall_sum"] / gt["pn_count"] if gt["pn_count"] > 0 else 0.0
         grand_pn_cer = gt["total_wrong_pn_char_cnt"] / gt["total_pn_char_cnt"] if gt["total_pn_char_cnt"] > 0 else 0.0
+        grand_pn_wer = gt["total_wrong_pn_morph_cnt"] / gt["total_pn_morph_cnt"] if gt["total_pn_morph_cnt"] > 0 else 0.0
         
         grand_total_row = {
             "file": "GRAND_TOTAL", # 눈에 띄게 표시
@@ -149,12 +181,16 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             "wer": f"{grand_wer:.4f}",
             "pn_recall": f"{grand_pn_recall:.4f}",
             "pn_cer": f"{grand_pn_cer:.4f}",
+            "pn_wer": f"{grand_pn_wer}:.4f",
+
             
             "replog": "Total_sum",
             "total_wrong_char_cnt": gt["total_wrong_char_cnt"],
             "total_char_cnt": gt["total_char_cnt"],
             "total_wrong_morph_cnt": gt["total_wrong_morph_cnt"],
-            "total_morph_cnt": gt["total_morph_cnt"]
+            "total_morph_cnt": gt["total_morph_cnt"],
+            "total_wrong_pn_morph_cnt": gt["total_wrong_pn_morph_cnt"],
+            "total_pn_morph_cnt": gt["total_pn_morph_cnt"]
         }
         summary_rows.append(grand_total_row)
         
@@ -169,10 +205,11 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             summary_fieldnames = [
                 "file", "top_k", "postprocess_on", "hotwords_strategy", 
                 "bias_weight_update_cnt", "hotwords", 
-                "cer", "wer", "pn_recall", "pn_cer", "replog",
+                "cer", "wer", "pn_recall", "pn_cer", "pn_wer","replog",
                 # 상세 데이터엔 없던 새로운 필드들 추가
                 "total_wrong_char_cnt", "total_char_cnt", 
-                "total_wrong_morph_cnt", "total_morph_cnt"
+                "total_wrong_morph_cnt", "total_morph_cnt",
+                "total_wrong_pn_morph_cnt", "total_pn_morph_cnt"
             ]
             
             # [Writer 2] 요약 데이터용 Writer 생성
@@ -242,8 +279,8 @@ def summarize(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 # round(값, 4)를 통해 소수점 4자리까지 반올림합니다.
                 "cer": round(a["total_wrong_char_cnt"]/max(a["total_char_cnt"],1), 4),
                 "wer": round(a["total_wrong_morph_cnt"] / max(1, a["total_morph_cnt"]), 4),
-                "pn_recall_avg": round(a["pn_recall_sum"] / max(1, a["pn_count"]), 4), # 수정
-                "pn_cer_avg": round(a["pn_cer_sum"] / max(1, a["pn_count"]), 4) # 수정
+                "pn_recall_global": round(a["pn_recall_sum"] / max(1, a["pn_count"]), 4), # 수정
+                "pn_cer_global": round(a["pn_cer_sum"] / max(1, a["pn_count"]), 4) # 수정
             })
 
     return out

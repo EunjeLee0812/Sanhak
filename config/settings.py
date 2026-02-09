@@ -22,20 +22,20 @@ BIAS_PATH = "/teamspace/studios/this_studio/Sanhak/lists/biasing_list.json"
 # 2. 실험 변수 (Hyper-parameters)
 # ==============================================================================
 HOTWORD_TOPK_SWEEP = [20,30] #20고정
-BIAS_WEIGHT_UPDATE_ITERATION_SWEEP = [2,3]  # 전체 학습 반복 횟수
+BIAS_WEIGHT_UPDATE_ITERATION_SWEEP = [1,2]  # 전체 학습 반복 횟수
 POSTPROCESS_SWEEP = [1] # 0: OFF, 1: ON
 HOTWORD_STRATEGY_SWEEP = [2] # 1: Random, 2: Hybrid 2로 고정
 RESET_BIASING_LIST=1 #BIAS_ITERATION_SWEEP[index]만큼의 학습 회차를 돈 후 다음 biasing_list를 초기화할지 [0:OFF, 1:ON]
-AUDIO_FILE_MAX= 4     # 사용할 최대 AUDIO FILE의 개수
+AUDIO_FILE_MAX= 2    # 사용할 최대 AUDIO FILE의 개수
 
 # ==============================================================================
 # 3. 모델 및 로직 설정
 # ==============================================================================
-ASR_MODEL = "medium"
+ASR_MODEL = "small"
 ASR_DEVICE = "cuda"
-ASR_COMPUTE = "float32"
+ASR_COMPUTE = "float16"
 ASR_LANG = "ko"
-ASR_BEAM = 5
+ASR_BEAM = 3
 KOREAN_ONLY_PROMPT = "엠비씨 뉴스데스크, 티브이엔 유퀴즈, 넷플릭스 파친코 틀어줘, 볼륨 십으로 올려줘, 삼십 분 뒤에 티비 꺼줘, 채널 이십이 번으로 바꿔줘, 에이, 비, 씨, 디, 하나, 둘, 셋, 삼십 초, 오 분, 세 칸, 일 배속"
 
 # 후처리 임계값
