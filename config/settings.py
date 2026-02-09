@@ -15,18 +15,18 @@
 BASE_DIR="/teamspace/studios/this_studio/Sanhak" 
 RESULTS_DIR = "/teamspace/studios/this_studio/Sanhak/results"
 AUDIO_FOLDER = "/teamspace/studios/this_studio/Sanhak/New_Audio_Files"
-TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/Sanhak/transcripts.json"
+TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/Sanhak/voice_record/Audio_files/transcripts.json"
 BIAS_PATH = "/teamspace/studios/this_studio/Sanhak/lists/biasing_list.json"
 
 # ==============================================================================
 # 2. 실험 변수 (Hyper-parameters)
 # ==============================================================================
 HOTWORD_TOPK_SWEEP = [20,30] #20고정
-BIAS_WEIGHT_UPDATE_ITERATION_SWEEP = [2,3]  # 전체 학습 반복 횟수
-POSTPROCESS_SWEEP = [1] # 0: OFF, 1: ON
+BIAS_WEIGHT_UPDATE_ITERATION_SWEEP = [2, 3]  # 전체 학습 반복 횟수
+POSTPROCESS_SWEEP = [0] # 0: OFF, 1: ON
 HOTWORD_STRATEGY_SWEEP = [2] # 1: Random, 2: Hybrid 2로 고정
 RESET_BIASING_LIST=1 #BIAS_ITERATION_SWEEP[index]만큼의 학습 회차를 돈 후 다음 biasing_list를 초기화할지 [0:OFF, 1:ON]
-AUDIO_FILE_MAX= 4     # 사용할 최대 AUDIO FILE의 개수
+AUDIO_FILE_MAX= 100      # 사용할 최대 AUDIO FILE의 개수
 
 # ==============================================================================
 # 3. 모델 및 로직 설정
@@ -45,4 +45,4 @@ RULE_TOL = 2
 
 #가중치 업데이트 관련 파라미터 추가
 PN_MATCH_TH   = float(os.environ.get("PN_MATCH_TH", "0.20"))   # pn_recall 계산용
-HARD_MISS_TH  = float(os.environ.get("HARD_MISS_TH", "0.35"))  # 학습용 hard miss 기준
+HARD_MISS_TH  = float(os.environ.get("HARD_MISS_TH", "0.50"))  # 학습용 hard miss 기준
