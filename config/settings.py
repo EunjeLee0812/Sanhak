@@ -14,8 +14,8 @@
 # ==============================================================================
 BASE_DIR="/teamspace/studios/this_studio/Sanhak" 
 RESULTS_DIR = "/teamspace/studios/this_studio/Sanhak/results"
-AUDIO_FOLDER = "/teamspace/studios/this_studio/Sanhak/voice_record/Audio_files"
-TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/Sanhak/voice_record/Audio_files/transcripts.json"
+AUDIO_FOLDER = "/teamspace/studios/this_studio/Sanhak/New_Audio_Files"
+TRANSCRIPTS_PATH = "/teamspace/studios/this_studio/Sanhak/transcripts.json"
 BIAS_PATH = "/teamspace/studios/this_studio/Sanhak/lists/biasing_list.json"
 
 # ==============================================================================
