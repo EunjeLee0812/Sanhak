@@ -44,10 +44,13 @@ class TextNormalizer:
         for eng, ko in self.char_map.items():
             s = s.replace(eng, ko)
 
-        #remove_space 값에 따라 띄어쓰기 제거
+        # 숫자, 한글만 남기고 나머지는 싹 지우기 (쉼표는 띄어쓰기로 교체)
+        s = re.sub(r",", " ", s)
         if remove_space:
+            #공백도 제거
             s = re.sub(r"[^0-9\uac00-\ud7a3]", "", s)
         else:
+            #공백은 제거 안 함
             s = re.sub(r"[^0-9\uac00-\ud7a3\s]", "", s)
             s = re.sub(r"\s+", " ", s).strip()
         return s

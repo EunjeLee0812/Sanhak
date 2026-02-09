@@ -63,15 +63,15 @@ def postprocess_with_hotwords(hyp_raw: str, hotwords: List[str], normalizer, gat
     
     if not hyp_raw or not hotwords: return hyp_raw, []
     sorted_hotwords = sorted(hotwords, key=len, reverse=True)
-    hyp_pp = normalizer.normalize(hyp_raw)
+    hyp_final = normalizer.normalize(hyp_raw)
     replog = []
     
     for hw in sorted_hotwords:
         # normalizer 객체 전달
-        start_idx, end_idx, cer = best_substring_span_raw(hw, hyp_pp, normalizer, tolerance=tol)
+        start_idx, end_idx, cer = best_substring_span_raw(hw, hyp_final, normalizer, tolerance=tol)
         
         if start_idx is None or end_idx is None or cer > gate: continue
-        surface = hyp_pp[start_idx:end_idx]
+        surface = hyp_final[start_idx:end_idx]
         
         # 수정: normalize 기준 통일(공백 제거)
         surf_n = normalizer.normalize(surface, remove_space=True)
@@ -87,7 +87,7 @@ def postprocess_with_hotwords(hyp_raw: str, hotwords: List[str], normalizer, gat
         similarity_score = fuzz.WRatio(surf_n, hw_n)
         if similarity_score < wratio_th: continue
         
-        hyp_pp = hyp_pp[:start_idx] + hw + hyp_pp[end_idx:]
+        hyp_final = hyp_final[:start_idx] + hw + hyp_final[end_idx:]
         replog.append({"type": "replace", "from": surface, "to": hw, "span_cer": round(float(cer),4), "wratio": round(float(similarity_score),4)})
         
-    return hyp_pp, replog
+    return hyp_final, replog

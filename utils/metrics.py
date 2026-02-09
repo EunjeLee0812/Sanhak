@@ -22,7 +22,23 @@ def _get_mecab():
         _MECAB = MeCab()
     return _MECAB
 
-
+# ✅ 1. "이 정도까지 틀린 건 봐줄게(수집할게)" 기준 설정 함수
+def get_correction_threshold(length: int) -> float:
+    """
+    글자 수 별로 '수집할 최대 오차율'을 반환합니다.
+    이 값보다 CER이 작거나 같아야(살짝 틀려야) 수집합니다.
+    """
+    if length <= 2:
+        return 1.00 #2글자 :   
+    elif length == 3:
+        return 0.8  # 3글자: 2글자 틀리는것까지 수집 (0.33 <= 0.35)
+    elif length == 4:
+        return 0.8  # 4글자: 3글자 틀림(0.25)까지 수집 (0.25 <= 0.26)
+    elif length == 5
+        return 0.65  # 5글자: 3글자 틀리는것까지 수집
+    else:
+        return 0.5  # 6글자 이상: 절반까지 틀리는거 허용
+    
 # CER, WER 계산 함수
 def calculate_cer(ref: str, hyp: str, normalizer) -> Tuple[float, float, int]:
     r = normalizer.normalize(ref, remove_space=True)
@@ -47,6 +63,9 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
         sorted_ents = sorted(ref_ents, key=len, reverse=True)
         for i, ref_ent in enumerate(sorted_ents):
             ent_norm = normalizer.normalize(ref_ent, remove_space=True)
+            #예외처리
+            if ent_norm=="": continue
+
             token = f"PROT{string.ascii_uppercase[i]}"
             protected_map_ref_ents[token] = ent_norm
             
@@ -59,6 +78,9 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
         sorted_hyp_ents = sorted(hyp_ents, key=len, reverse=True)
         for i, hyp_ent in enumerate(sorted_hyp_ents):
             hyp_ent_norm = normalizer.normalize(hyp_ent, remove_space=True)
+
+            if hyp_ent_norm=="": continue
+
             token = f"PROT{string.ascii_uppercase[i]}"
             protected_map_hyp_ents[token] = hyp_ent_norm
             
@@ -115,11 +137,12 @@ def best_proper_noun_match(ent: str, hyp: str, normalizer, tol: int = RULE_TOL, 
 
 
 def evaluate_proper_nouns(
-    entities: List[str],
+    ents: List[str],
     hyp_final: str,
     normalizer,
-    match_th: float,
-) -> Tuple[float, float, List[str], List[str]]:
+    match_th: float = PN_MATCH_TH,
+    hard_th: float = HARD_MISS_TH
+) -> Tuple[Optional[float], float, int, Optional[float], int, int, float, List[str], List[str]]: #수정: 엔티티가 없는 경우 pn_recall = 0이 됨 -> None 반환해서 집계에서 제외
     """
     고유명사(Entities) 인식 성능을 평가하는 함수.
     
@@ -129,54 +152,57 @@ def evaluate_proper_nouns(
         hyp_pn (List[str]): 인식된 고유명사 텍스트 (로그용)
         soft_missed (List[str]): 살짝 틀려서 교정이 필요한 단어들 (학습용)
     """
-    
-    if not entities:
-        return 0.0, 0.0, [], []
+
+    if not ents:
+        return None, 0.0,0,None,0,0,0.0, [], []
 
     cers: List[float] = []
     hyp_pn: List[str] = []
-    soft_missed: List[str] = [] 
+    soft_missed: List[str] = []
+    #전체 pn_ents 수
+    #PN_WER 계산 변수
+    total_ents_cnt=len(ents)
+    total_wrong_hyp_ents_cnt=0
+    #PN_CER 계산 변수
+    total_wrong_pn_char_cnt=0
+    total_pn_char_cnt=0
 
-    # ✅ 1. "이 정도까지 틀린 건 봐줄게(수집할게)" 기준 설정 함수
-    def get_correction_threshold(length: int) -> float:
-        """
-        글자 수 별로 '수집할 최대 오차율'을 반환합니다.
-        이 값보다 CER이 작거나 같아야(살짝 틀려야) 수집합니다.
-        """
-        if length <= 2:
-            return 1.00 #2글자 :   
-        elif length == 3:
-            return 0.8  # 3글자: 2글자 틀리는것까지 수집 (0.33 <= 0.35)
-        elif length == 4:
-            return 0.8  # 4글자: 3글자 틀림(0.25)까지 수집 (0.25 <= 0.26)
-        elif length == 5
-            return 0.65  # 5글자: 3글자 틀리는것까지 수집
-        else:
-            return 0.5  # 6글자 이상: 절반까지 틀리는거 허용
+    for ent in ents:
+        # ✅ normalizer 반드시 전달
+        cer, matched_sub = best_proper_noun_match(ent, hyp_final, normalizer)
 
-    for entity in entities:
-        # normalizer를 사용하여 가장 유사한 부분 찾기
-        # (주의: best_proper_noun_match 함수가 같은 파일 내에 있거나 import 되어 있어야 함)
-        cer, matched_sub = best_proper_noun_match(entity, hyp_final, normalizer)
+        #고유명사 CER 계산용 분자, 분모 계산
+        total_pn_char_cnt+=len(ent)
+        total_wrong_pn_char_cnt+=Levenshtein.distance(ent,matched_sub)*len(ent)
+
+        #hyp_ent가 틀렸으면 틀린 단어 개수에 추가
+        if cer>0.01: total_wrong_hyp_ents_cnt+=1
+ 
         cers.append(cer)
         
         # 결과 정리 (1글자 짜리는 노이즈로 보고 빈값 처리)
         cleaned = (matched_sub or "").replace(" ", "").strip()
         hyp_pn.append(cleaned if len(cleaned) >= 2 else "")
 
+
+    
         # ✅ 2. 살짝 틀린 것들만 골라내기 (Soft Miss Logic)
-        max_tolerable_cer = get_correction_threshold(len(entity))
-        
+        max_tolerable_cer = get_correction_threshold(len(ent))
+
         # 조건: "완벽하지 않고(0초과) AND 너무 망가지지 않은(THR이하) 것"
         if 0 < cer <= max_tolerable_cer:
-            soft_missed.append(entity)
+            soft_missed.append(ent)
 
     # Recall 계산 (match_th 이내로 들어온 것들의 비율)
     if len(cers) > 0:
-        pn_recall = sum(c <= match_th for c in cers) / len(cers)
-        avg_pn_cer = sum(cers) / len(cers)
+      pn_recall = sum(c <= match_th for c in cers) / len(cers)
+      avg_pn_cer = sum(cers) / len(cers)
     else:
-        pn_recall = 0.0
-        avg_pn_cer = 0.0
+      pn_recall = 0.0
+      avg_pn_cer = 0.0  
+    pn_wer=total_wrong_hyp_ents_cnt/total_ents_cnt
+    
+    return pn_recall, total_wrong_pn_char_cnt, total_pn_char_cnt, avg_pn_cer, total_wrong_hyp_ents_cnt, total_ents_cnt, pn_wer, hyp_pn, hard_missed
+        
 
-    return pn_recall, avg_pn_cer, hyp_pn, soft_missed
+

@@ -14,3 +14,4 @@ __init__.py
 .ipynb_checkpoints/
 *.ipynb filter=strip-notebook-output.DS_Store
 makelist.py
+*.ipynb filter=strip-notebook-output
