@@ -89,7 +89,7 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
             
     ref_morphs, hyp_morphs = mecab.morphs(ref_text), mecab.morphs(hyp_text)
     
-    print(protected_map_hyp_ents, hyp_morphs)
+    # print(protected_map_hyp_ents, hyp_morphs)
     
     # 3. 보호된 토큰 복원 (Unmasking)
     # ['SPECIALent0', '틀어줘'] -> ['제이티비씨', '틀어줘']

@@ -49,8 +49,6 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             if key not in agg:
                 agg[key] = {
                     "count": 0, 
-                    # "bias_weight_update_cnt": 0, 
-                    # "hotwords":"",
                     "total_wrong_char_cnt": 0, "total_char_cnt": 0,
                     "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
                     "total_wrong_pn_char_cnt": 0, "total_pn_char_cnt": 0,
@@ -74,9 +72,6 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             g["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))        
 
 
-            # g["bias_weight_update_cnt"]=r.get("bias_weight_update_cnt",0)
-            # g["hotwords"]=r.get("hotwords","")
-
             # PN 지표는 값이 있는 경우(None이 아닌 경우)에만 합산
             if r.get("pn_recall") is not None:
                 g["pn_recall_sum"] += float(r["pn_recall"])
@@ -96,41 +91,29 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             #전체 고유명사 CER
             gt["total_wrong_pn_char_cnt"] += float(r.get("wrong_pn_char_cnt", 0))
             gt["total_pn_char_cnt"] += float(r.get("pn_char_cnt", 0))
-            #전체 고유명사 CER
+            #전체 고유명사 WER
             gt["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0))
             gt["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))
 
-                # PN 지표 정밀 계산 (역산 로직)
-            # rows에 'ref_text_pn'(정답 리스트)이 있으므로 이를 이용해 분모를 구함
+            # PN 지표 정밀 계산 (역산 로직)
             ents = r.get("ref_pn", [])
             if ents and r.get("pn_recall") is not None:
-                # Recall: 분자(맞춘 개수) = 비율 * 전체개수
                 n_ents = len(ents)
                 gt["total_pn_ents"] += n_ents
                 gt["total_pn_hits"] += float(r["pn_recall"]) * n_ents
 
-                # CER: 분자(편집거리) = 비율 * 전체글자수
-                # 글자수는 공백 제거 기준으로 추산 (normalizer가 없으므로 근사치 사용)
                 n_chars = sum(len(str(e).replace(" ", "")) for e in ents)
                 gt["total_pn_char_cnt"] += n_chars
                 gt["total_wrong_pn_char_cnt"] += float(r["pn_cer"]) * n_chars
 
-                # WER: 분자(편집거리) = 비율 * 전체단어(형태소)수
-                # 글자수는 공백 제거 기준으로 추산 (normalizer가 없으므로 근사치 사용)
-                # gt["total_morph_cnt"] += n_ents
-                # gt["total_wrong_morph_cnt"] += float(r["pn_wer"]) * n_ents
         # 3. 요약 데이터 리스트 생성
         # ----------------------------------------------------------------------
         summary_rows = []
-        # sorted_keys = sorted(agg.keys())
 
         for key in agg:
             top_k, pp_on, strat, bias_cnt, hotwords= key
             stats = agg[key]
             
-            # bias_cnt=stats["bias_weight_update_cnt"]
-            # hw_str=stats["hotwords"]
-
             # Global Average 계산
             global_cer = stats["total_wrong_char_cnt"] / stats["total_char_cnt"] if stats["total_char_cnt"] > 0 else 0.0
             global_wer = stats["total_wrong_morph_cnt"] / stats["total_morph_cnt"] if stats["total_morph_cnt"] > 0 else 0.0
@@ -154,7 +137,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 "pn_cer": f"{global_pn_cer:.4f}",
                 "pn_wer": f"{global_pn_wer:.4f}",
                 
-                # [중요] Summary에만 존재하는 필드들
+                # [수정] 필드명 통일 (file_cnt -> total_file_cnt)
                 "replog": f"Total Files: {stats['count']}",
                 "total_wrong_char_cnt": stats["total_wrong_char_cnt"],
                 "total_char_cnt": stats["total_char_cnt"],
@@ -162,7 +145,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 "total_morph_cnt": stats["total_morph_cnt"],
                 "total_wrong_pn_morph_cnt": stats["total_wrong_pn_morph_cnt"],
                 "total_pn_morph_cnt": stats["total_pn_morph_cnt"],
-                "file_cnt":stats["count"]
+                "total_file_cnt": stats["count"]  # 여기를 통일했습니다
             }
             summary_rows.append(summary_row)
 
@@ -184,9 +167,8 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             "wer": f"{grand_wer:.4f}",
             "pn_recall": f"{grand_pn_recall:.4f}",
             "pn_cer": f"{grand_pn_cer:.4f}",
-            "pn_wer": f"{grand_pn_wer}:.4f",
+            "pn_wer": f"{grand_pn_wer:.4f}", # 오타 수정 (fstring 위치)
 
-            
             "replog": "Total_sum",
             "total_wrong_char_cnt": gt["total_wrong_char_cnt"],
             "total_char_cnt": gt["total_char_cnt"],
@@ -194,7 +176,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             "total_morph_cnt": gt["total_morph_cnt"],
             "total_wrong_pn_morph_cnt": gt["total_wrong_pn_morph_cnt"],
             "total_pn_morph_cnt": gt["total_pn_morph_cnt"],
-            "total_file_cnt":gt["file_count"]
+            "total_file_cnt": gt["file_count"] # 여기도 통일했습니다
         }
         summary_rows.append(grand_total_row)
         
@@ -204,8 +186,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
         if summary_rows:
             f.write("\n") # 상세 데이터와 구분하기 위해 빈 줄 추가
             
-            # [핵심 수정] 요약 데이터용 fieldnames를 새로 정의
-            # 기존 detail 필드 + 새로 추가된 집계 필드들
+            # [수정] 헤더 이름 통일 (total_file_cnt)
             summary_fieldnames = [
                 "file", "top_k", "postprocess_on", "hotwords_strategy", 
                 "bias_weight_update_cnt", "hotwords", 
@@ -213,12 +194,13 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 # 상세 데이터엔 없던 새로운 필드들 추가
                 "total_wrong_char_cnt", "total_char_cnt", 
                 "total_wrong_morph_cnt", "total_morph_cnt",
-                "total_wrong_pn_morph_cnt", "total_pn_morph_cnt", "total_file_count"
+                "total_wrong_pn_morph_cnt", "total_pn_morph_cnt", 
+                "total_file_cnt" # 수정됨
             ]
             
             # [Writer 2] 요약 데이터용 Writer 생성
             w_summary = csv.DictWriter(f, fieldnames=summary_fieldnames)
-            w_summary.writeheader() # 요약용 헤더를 다시 씀 (구분 명확화)
+            w_summary.writeheader() 
             w_summary.writerows(summary_rows)
 
     print(f"[SUCCESS] 상세 및 요약 결과가 {output_path}에 저장되었습니다.")
@@ -234,7 +216,7 @@ def summarize(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         key = (
             int(r["top_k"]),
-            int(r["postprocess_on"]),   # 🔥 postprocess_on → postprocess_on
+            int(r["postprocess_on"]), 
             hotwords_strategy,
             bias_weight_update_cnt,
         )
@@ -251,7 +233,7 @@ def summarize(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "global_wer": 0.0,
                 "pn_recall_sum": 0.0,
                 "pn_cer_sum": 0.0,
-                "pn_count": 0, # 추가
+                "pn_count": 0,
                 "total_wrong_char_cnt":0,
                 "total_char_cnt":0, 
                 "total_wrong_morph_cnt":0, 
@@ -273,18 +255,16 @@ def summarize(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     out = []
     for _, a in sorted(agg.items()):
-        n = max(1, a["files_num"])
         out.append({
                 "top_k": a["top_k"],
                 "postprocess_on": a["postprocess_on"],
                 "hotwords_strategy": a["hotwords_strategy"],
                 "bias_weight_update_cnt": a["bias_weight_update_cnt"],
                 "used_file_num": AUDIO_FILE_MAX,
-                # round(값, 4)를 통해 소수점 4자리까지 반올림합니다.
                 "cer": round(a["total_wrong_char_cnt"]/max(a["total_char_cnt"],1), 4),
                 "wer": round(a["total_wrong_morph_cnt"] / max(1, a["total_morph_cnt"]), 4),
-                "pn_recall_global": round(a["pn_recall_sum"] / max(1, a["pn_count"]), 4), # 수정
-                "pn_cer_global": round(a["pn_cer_sum"] / max(1, a["pn_count"]), 4) # 수정
+                "pn_recall_global": round(a["pn_recall_sum"] / max(1, a["pn_count"]), 4), 
+                "pn_cer_global": round(a["pn_cer_sum"] / max(1, a["pn_count"]), 4) 
             })
 
     return out
