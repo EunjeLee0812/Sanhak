@@ -31,7 +31,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             "total_wrong_pn_char_cnt": 0.0, "total_pn_char_cnt": 0, # CER용 (분자/분모)
             "total_wrong_pn_morph_cnt": 0.0, "total_pn_morph_cnt": 0, # WER용 (분자/분모)
             "file_count": 0, "pn_count":0, #None이 아닌 pn_recall 개수,
-            "pn_recall_sum":0
+            "pn_recall_sum":0, "total_files_num":0
         }
 
         for r in rows:
@@ -72,6 +72,8 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
 
             g["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0)) 
             g["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))        
+
+
             # g["bias_weight_update_cnt"]=r.get("bias_weight_update_cnt",0)
             # g["hotwords"]=r.get("hotwords","")
 
@@ -159,7 +161,8 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 "total_wrong_morph_cnt": stats["total_wrong_morph_cnt"],
                 "total_morph_cnt": stats["total_morph_cnt"],
                 "total_wrong_pn_morph_cnt": stats["total_wrong_pn_morph_cnt"],
-                "total_pn_morph_cnt": stats["total_pn_morph_cnt"]
+                "total_pn_morph_cnt": stats["total_pn_morph_cnt"],
+                "file_cnt":stats["count"]
             }
             summary_rows.append(summary_row)
 
@@ -190,7 +193,8 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
             "total_wrong_morph_cnt": gt["total_wrong_morph_cnt"],
             "total_morph_cnt": gt["total_morph_cnt"],
             "total_wrong_pn_morph_cnt": gt["total_wrong_pn_morph_cnt"],
-            "total_pn_morph_cnt": gt["total_pn_morph_cnt"]
+            "total_pn_morph_cnt": gt["total_pn_morph_cnt"],
+            "total_file_cnt":gt["file_count"]
         }
         summary_rows.append(grand_total_row)
         
@@ -209,7 +213,7 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
                 # 상세 데이터엔 없던 새로운 필드들 추가
                 "total_wrong_char_cnt", "total_char_cnt", 
                 "total_wrong_morph_cnt", "total_morph_cnt",
-                "total_wrong_pn_morph_cnt", "total_pn_morph_cnt"
+                "total_wrong_pn_morph_cnt", "total_pn_morph_cnt", "total_file_count"
             ]
             
             # [Writer 2] 요약 데이터용 Writer 생성

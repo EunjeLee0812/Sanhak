@@ -119,7 +119,7 @@ class BiasManager:
 
         print(f"[SUCCESS] {path} 데이터가 모두 0으로 초기화되었습니다.")
 
-    def finalize(self, bias_weight_update_cnt):
+    def finalize(self, repeat]):
         # ✅ 매 iteration마다 누적 반영
         if self.session_missed:
             for word, count in self.session_missed.items():
@@ -132,4 +132,4 @@ class BiasManager:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         print("[LEARNING] 가중치 데이터베이스 저장 완료.")
 
-        print(f"\n[LEARNING] {bias_weight_update_cnt}회차 누적 저장 완료. (반복횟수={self.data['ref_count']})")
+        print(f"\n[LEARNING] {repeat}회차 누적 저장 완료. (반복횟수={self.data['ref_count']})")
