@@ -5,7 +5,7 @@
 # # ==============================================================================
 # BASE_DIR="/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/" 
 # RESULTS_DIR = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/results"
-# AUDIO_FOLDER = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/voice_record"
+# AUDIO_FOLDER = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/New_Audio_Files"
 # TRANSCRIPTS_PATH = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/transcripts.json"
 # BIAS_PATH = "/content/drive/MyDrive/25-2 산학협력프로젝트/26.1_최종발표/results/lists/biasing_list.json"
 
