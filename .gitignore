@@ -5,6 +5,7 @@
 *.ini
 *.mp4
 *.pyc
+__pycache__/
 biasing_list.json
 __init__.py
 
