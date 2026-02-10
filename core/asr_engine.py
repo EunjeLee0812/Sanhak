@@ -173,21 +173,27 @@ class ASR:
     # [수정] 프롬프트에 핫워드 주입 (가장 강력한 힌트)
     # 예: "가요톱텐, 강호동, 엠비씨 뉴스데스크, ..." 형태로 만듦
         dynamic_prompt = self.korean_only_prompt
+
+        PROMPT_HOTWORD_LIMIT = 10 
+        
         if hotwords and len(hotwords) > 0:
-            # 상위 핫워드들을 콤마로 연결하여 프롬프트 앞단에 배치
-            hotword_str = ", ".join(hotwords) 
+            # 리스트 슬라이싱으로 개수 제한
+            safe_hotwords = hotwords[:PROMPT_HOTWORD_LIMIT]
+            hotword_str = ", ".join(safe_hotwords)
             dynamic_prompt = f"{hotword_str}, {self.korean_only_prompt}"
 
         kwargs: Dict[str, Any] = {
             "language": lang,
             "beam_size": beam_size,
-            "initial_prompt": dynamic_prompt, # 주입된 프롬프트 사용
+            "initial_prompt": dynamic_prompt, 
             "vad_filter": True
         }
         
-        # faster-whisper 자체 파라미터도 같이 사용 (시너지 효과)
+        # [중요] 파라미터용 핫워드(logit biasing)는 개수 제한 없이 전체(50개 등) 다 넣어도 됨
+        # (이건 토큰 길이가 아니라 확률 계산에만 영향을 주므로 안전함)
         if hotwords and len(hotwords) > 0:
             kwargs["hotwords"] = ",".join(hotwords)
 
+        # 에러가 발생하던 지점
         segs, _ = self.model.transcribe(path, **kwargs)
         return "".join(s.text for s in segs).strip()

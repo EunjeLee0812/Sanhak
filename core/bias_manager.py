@@ -144,7 +144,7 @@ class BiasManager:
             return self.get_weighted_hotwords_random(top_k)
         elif mode == 2:
             # Hybrid 전략: Exploit + Explore
-            return self.get_weighted_hotwords_hybrid(top_k, n_fixed=8)
+            return self.get_weighted_hotwords_hybrid(top_k, n_fixed=int(top_k*0.3))
 
     def get_weighted_hotwords_random(self, top_k: int) -> List[str]:
         """
@@ -270,6 +270,9 @@ class BiasManager:
         if not words: 
             return []
 
+        #가중치가 같은 값들이 매번 오름차순 정렬로 인해 똑같은 게 추출돼서 랜덤 요소 도입
+        random.shuffle(words)
+
         # 2. 가중치 내림차순 정렬
         # key: 정렬 기준 함수 (가중치 값으로 정렬)
         # reverse=True: 높은 값부터 (내림차순)
@@ -278,6 +281,8 @@ class BiasManager:
             key=lambda w: float(self.data["global"].get(w, 0.0)), 
             reverse=True
         )
+
+
         # 결과 예: ["A"(10.0), "B"(8.0), "C"(5.0), ...]
 
         # 3. n_fixed 범위 조정
