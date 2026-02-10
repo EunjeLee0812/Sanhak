@@ -41,8 +41,9 @@ def get_correction_threshold(length: int) -> float:
     
 # CER, WER 계산 함수
 def calculate_cer(ref: str, hyp: str, normalizer) -> Tuple[float, float, int]:
-    r = normalizer.normalize(ref, remove_space=True)
-    h = normalizer.normalize(hyp, remove_space=True)
+    # 평가용 normalizer로 변경
+    r = normalizer.normalize_for_eval(ref, remove_space=True)
+    h = normalizer.normalize_for_eval(hyp, remove_space=True)
     # if not r:
     #     return (0.0 if not h else 1.0), (0.0 if not h else float(len(h))), 0
     return Levenshtein.distance(r, h) / len(r), Levenshtein.distance(r,h), len(r)
@@ -51,8 +52,9 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
     normalizer = normalizer or _get_normalizer()
     mecab = mecab or _get_mecab()
 
-    ref_text = normalizer.normalize(ref, remove_space=False)
-    hyp_text = normalizer.normalize(hyp, remove_space=False)
+    # 평가용 normalizer로 변경
+    ref_text = normalizer.normalize_for_eval(ref, remove_space=False)
+    hyp_text = normalizer.normalize_for_eval(hyp, remove_space=False)
 
     # 2. 고유명사 보호 (Masking)
     # ref_ents, hyp_ents 리스트에 있는 단어들을 Mecab이 쪼개지 못하도록 치환
@@ -62,7 +64,8 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
         # 긴 단어부터 치환해야 함
         sorted_ents = sorted(ref_ents, key=len, reverse=True)
         for i, ref_ent in enumerate(sorted_ents):
-            ent_norm = normalizer.normalize(ref_ent, remove_space=True)
+            # 평가용 normalizer로 교체
+            ent_norm = normalizer.normalize_for_eval(ref_ent, remove_space=True)
             #예외처리
             if ent_norm=="": continue
 
@@ -77,7 +80,8 @@ def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ents:Lis
         # 긴 단어부터 치환해야 함
         sorted_hyp_ents = sorted(hyp_ents, key=len, reverse=True)
         for i, hyp_ent in enumerate(sorted_hyp_ents):
-            hyp_ent_norm = normalizer.normalize(hyp_ent, remove_space=True)
+            # 평가용 normalizer로 교체
+            hyp_ent_norm = normalizer.normalize_for_eval(hyp_ent, remove_space=True)
 
             if hyp_ent_norm=="": continue
 
@@ -105,8 +109,11 @@ def best_proper_noun_match(ent: str, hyp: str, normalizer, tol: int = RULE_TOL, 
     # min ratio: ent 길이 대비 최소 일치 비율 (조각 매칭 방지), min_abs_len: 절대 최소 substring 길이
     
     normalizer = normalizer or _get_normalizer()
-    e = normalizer.normalize(ent, remove_space=True)
-    h = normalizer.normalize(hyp, remove_space=True)
+ 
+    # 평가용 normalizer로 교체
+    e = normalizer.normalize_for_eval(ent, remove_space=True)
+    h = normalizer.normalize_for_eval(hyp, remove_space=True)
+
     if not e: return 0.0, ""
     if not h: return 1.0, ""
 
@@ -181,8 +188,18 @@ def evaluate_proper_nouns(
         cer, matched_sub = best_proper_noun_match(ent, hyp_final, normalizer)
 
         #고유명사 CER 계산용 분자, 분모 계산
-        ref_total_pn_char_cnt+=len(ent)
-        hyp_total_wrong_pn_char_cnt+=Levenshtein.distance(ent,matched_sub)
+        ent_n = normalizer.normalize_for_eval(ent, remove_space=True)
+        if not ent_n:
+            continue
+
+        sub_raw = (matched_sub or "").replace(" ", "").strip()
+        sub_n = normalizer.normalize_for_eval(sub_raw, remove_space=True)
+
+        ref_total_pn_char_cnt += len(ent_n)
+        hyp_total_wrong_pn_char_cnt += Levenshtein.distance(ent_n, sub_n)
+
+
+
 
         #hyp_ent가 틀렸으면 틀린 단어 개수에 추가
         if cer>0.01: 
@@ -194,6 +211,7 @@ def evaluate_proper_nouns(
         
         # 결과 정리 (1글자 짜리는 노이즈로 보고 빈값 처리)
         cleaned = (matched_sub or "").replace(" ", "").strip()
+        cleaned = normalizer.normalize_for_eval(cleaned, remove_space=True)
         hyp_pn.append(cleaned if len(cleaned) >= 2 else "")
 
 

@@ -1,299 +1,292 @@
 """
 텍스트 정규화 모듈 (normalizer.py)
 
-이 모듈은 ASR(음성인식) 결과와 정답 텍스트를 비교 가능한 형태로 변환합니다.
-주요 기능:
-1. 영어 알파벳 → 한글 발음으로 변환 (예: "ABC" → "에이비씨")
-2. 숫자 → 한글 숫자 읽기로 변환 (예: "123" → "백이십삼")
-3. 특수문자 제거 및 공백 정리
-4. 원본 텍스트의 문자 위치(인덱스) 매핑 정보 생성
+- 기존 normalize(): 그대로 유지 (postprocess/span 매칭 안정성)
+- 신규 normalize_for_eval(): 평가용(숫자 표준형=아라비아 숫자) 정규화
 """
 
 import re
-from g2pk import G2p  # 한글 grapheme-to-phoneme 변환기 (현재는 사용하지 않음)
-from typing import Dict, List, Optional, Any, Tuple
+from g2pk import G2p
+from typing import Dict, List, Tuple
 
 
 class TextNormalizer:
-    """
-    텍스트 정규화 클래스
-    
-    ASR 결과와 정답 텍스트를 동일한 기준으로 정규화하여 
-    공정한 비교를 가능하게 합니다.
-    
-    예시:
-        normalizer = TextNormalizer()
-        text = "ABC-123번, 볼륨 5로"
-        normalized = normalizer.normalize(text, remove_space=False)
-        # 결과: "에이비씨백이십삼번 볼륨오로"
-    """
-    
     def __init__(self):
-        """
-        TextNormalizer 초기화
-        
-        초기화 시 다음 변환 맵들을 생성합니다:
-        - char_map: 영어 알파벳 → 한글 발음 매핑
-        - num_sense_map: 한글 숫자 발음 통일 매핑
-        """
-        # G2p 객체 생성 (현재는 사용하지 않지만 향후 확장 가능)
         self.g2p = G2p()
 
-        # ===================================================================
-        # 영어 알파벳 → 한글 발음 변환 맵
-        # ===================================================================
-        # 용도: "ABC채널" → "에이비씨채널"로 변환하여 ASR 결과와 통일
-        # ASR 모델은 영어를 한글 발음으로 인식하는 경우가 많기 때문
         self.char_map = {
-            "a": "에이", "b": "비", "c": "씨", "d": "디", "e": "이", 
-            "f": "에프", "g": "지", "h": "에이치", "i": "아이", "j": "제이", 
-            "k": "케이", "l": "엘", "m": "엠", "n": "엔", "o": "오", 
-            "p": "피", "q": "큐", "r": "알", "s": "에스", "t": "티", 
-            "u": "유", "v": "브이", "w": "더블유", "x": "엑스", 
+            "a": "에이", "b": "비", "c": "씨", "d": "디", "e": "이",
+            "f": "에프", "g": "지", "h": "에이치", "i": "아이", "j": "제이",
+            "k": "케이", "l": "엘", "m": "엠", "n": "엔", "o": "오",
+            "p": "피", "q": "큐", "r": "알", "s": "에스", "t": "티",
+            "u": "유", "v": "브이", "w": "더블유", "x": "엑스",
             "y": "와이", "z": "제트"
         }
-        
-        # ===================================================================
-        # 한글 숫자 발음 단일화 맵
-        # ===================================================================
-        # 용도: 같은 숫자를 나타내는 다양한 한글 표현을 하나로 통일
-        # 예: "하나", "한" → 모두 "일"로 통일
-        #     "둘", "두" → 모두 "이"로 통일
-        # 이유: "한 개", "하나 주세요"처럼 문맥에 따라 다르게 발음되는 것을 통일
+
         self.num_sense_map = {
-            "하나": "일",   # 1
-            "한": "일",     # 1 (관형사형)
-            "둘": "이",     # 2
-            "두": "이",     # 2 (관형사형)
-            "셋": "삼",     # 3
-            "세": "삼",     # 3 (관형사형)
-            "여덟": "팔",   # 8
-            "열": "십"      # 10
+            "하나": "일",
+            "한": "일",
+            "둘": "이",
+            "두": "이",
+            "셋": "삼",
+            "세": "삼",
+            "여덟": "팔",
+            "열": "십"
         }
 
+        # ==========================
+        # 평가용 숫자 표준화 세팅
+        # ==========================
+        self.units = [
+            "번", "개", "단계", "편", "화", "회", "위", "배", "퍼센트",
+            "분", "초", "시", "시간", "점", "일", "주", "달", "년대", "년",
+            "채널"
+        ]
+
+        # 긴 단위가 먼저 오도록 정렬 (시간 > 시)
+        _units_sorted = sorted(self.units, key=len, reverse=True)
+        self._unit_re = "(?:" + "|".join(map(re.escape, _units_sorted)) + ")"
+
+        # 한 자리 숫자어(자리수 읽기용): 일구팔팔 -> 1988
+        self._digit_word = {
+            "영": "0", "공": "0",
+            "일": "1", "이": "2", "삼": "3", "사": "4", "오": "5",
+            "육": "6", "칠": "7", "팔": "8", "구": "9",
+        }
+
+        # 한자식 수사 파싱: 이천십 -> 2010, 이십이 -> 22
+        self._sino_val = {
+            "영": 0, "공": 0, "일": 1, "이": 2, "삼": 3, "사": 4,
+            "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9
+        }
+        self._sino_unit = {"십": 10, "백": 100, "천": 1000}
+
+    # -----------------------------
+    # (기존) 0~999까지만 한글로 바꾸는 함수
+    #  - normalize() 유지 목적이라 그대로 둠
+    # -----------------------------
     def _num_to_ko(self, num_str: str) -> str:
-        """
-        숫자를 한글 읽기로 변환하는 내부 메서드
-        
-        Args:
-            num_str (str): 변환할 숫자 문자열 (예: "123", "5")
-            
-        Returns:
-            str: 한글로 읽은 숫자 (예: "백이십삼", "오")
-            
-        동작 방식:
-            - 0~9: 일, 이, 삼, ... 구
-            - 10~99: 십, 이십, ... 구십구
-            - 100~999: 백, 이백, ... 구백구십구
-            
-        예시:
-            _num_to_ko("0")   → "영"
-            _num_to_ko("5")   → "오"
-            _num_to_ko("23")  → "이십삼"
-            _num_to_ko("123") → "백이십삼"
-            
-        Note:
-            - 1000 이상의 숫자는 지원하지 않음 (999까지만)
-            - "십"의 경우 "일십"이 아닌 "십"으로 표현 (한국어 관례)
-            - 변환 실패 시 원본 문자열 그대로 반환
-        """
         try:
             n = int(num_str)
-            
-            # 0은 특별 처리
-            if n == 0: 
+            if n == 0:
                 return "영"
-            
-            # 변환용 테이블 정의
-            # u: 일의 자리 (0~9)
-            # t: 십의 자리 (0, 10, 20, ..., 90)
-            # h: 백의 자리 (0, 100, 200, ..., 900)
+
             u = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"]
             t = ["", "십", "이십", "삼십", "사십", "오십", "육십", "칠십", "팔십", "구십"]
             h = ["", "백", "이백", "삼백", "사백", "오백", "육백", "칠백", "팔백", "구백"]
-            
-            # 100 이상: 백의 자리 처리
+
             if n >= 100:
-                hv, r = divmod(n, 100)      # hv: 백의 자리 값, r: 나머지
-                tv, uv = divmod(r, 10)      # tv: 십의 자리 값, uv: 일의 자리 값
-                
-                # 십의 자리가 1일 때 "일십"이 아닌 "십"으로 표현
+                hv, r = divmod(n, 100)
+                tv, uv = divmod(r, 10)
                 tens_part = t[tv] if tv != 1 else "십"
-                
                 return h[hv] + tens_part + u[uv]
-                
-            # 10~99: 십의 자리 처리
             elif n >= 10:
                 tv, uv = divmod(n, 10)
-                
-                # 십의 자리가 1일 때 "일십"이 아닌 "십"으로 표현
                 tens_part = t[tv] if tv != 1 else "십"
-                
                 return tens_part + u[uv]
-            
-            # 1~9: 일의 자리만
             return u[n]
-            
         except:
-            # 변환 실패 시 (숫자가 아닌 경우 등) 원본 반환
             return num_str
 
+    # ==========================
+    # 평가용 숫자 표준화 헬퍼
+    # ==========================
+    def _convert_digit_sequence(self, s: str) -> str:
+        """
+        자리수 읽기: "일구팔팔" -> "1988"
+        3~6자리 연속 숫자어를 숫자로 변환(연도/번호에 흔함)
+        """
+        pattern = rf"(?<![0-9\uac00-\ud7a3])(?:영|공|일|이|삼|사|오|육|칠|팔|구){{3,6}}(?=\s*(?:{self._unit_re}|\s|$))"
+
+        def repl(m):
+            return "".join(self._digit_word[ch] for ch in m.group())
+
+        return re.sub(pattern, repl, s)
+
+    def _parse_sino_number(self, token: str):
+        """
+        한자식 수사(0~9999 중심): "이천십" -> 2010, "이십이" -> 22
+        """
+        has_unit = any(u in token for u in self._sino_unit.keys())
+        if not has_unit:
+            # 단독 1글자 한자수사는 여기서도 안전 변환 가능하지만
+            # eval에서는 단위 붙은 경우만 변환하도록 별도 처리한다.
+            return None
+
+        total = 0
+        num = 0
+        for ch in token:
+            if ch in self._sino_val:
+                num = self._sino_val[ch]
+            elif ch in self._sino_unit:
+                unit = self._sino_unit[ch]
+                if num == 0:
+                    num = 1  # "십"==10 관례
+                total += num * unit
+                num = 0
+            else:
+                return None
+
+        total += num
+        return total
+
+    def _convert_sino_numbers(self, s: str) -> str:
+        """
+        '십/백/천' 포함 한자식 수사만 숫자로 변환.
+        단, 단어 내부(추천의 '천' 등) 오염 방지.
+        """
+        # ? 길이 2 이상 + 앞이 한글/숫자면 금지 + (뒤는 단위/공백/끝이면 OK)
+        pattern = rf"(?<![0-9\uac00-\ud7a3])[영공일이삼사오육칠팔구십백천]{{2,}}(?=\s*(?:{self._unit_re}|\s|$))"
+
+        def repl(m):
+            tok = m.group()
+            if not any(u in tok for u in ("십", "백", "천")):
+                return tok
+            val = self._parse_sino_number(tok)
+            return str(val) if val is not None else tok
+
+        return re.sub(pattern, repl, s)
+
+    def _convert_single_sino_if_unit(self, s: str) -> str:
+        """
+        1글자 한자수사는 '단위가 붙은 경우'에만 숫자화.
+        단, '영/공'은 영화/공연 등 오탐이 너무 커서 제외.
+        예) "오 화"->"5 화", "사점"->"4점", "오시간"->"5시간"
+        """
+        allowed = {k: v for k, v in self._sino_val.items() if k not in ("영", "공")}
+        # ? 추가: '십'도 단독 수사로 허용 (10분/10시/10개/10위 등)
+        allowed["십"] = 10
+
+        sino_single = "|".join(map(re.escape, allowed.keys()))
+
+
+
+        # - 앞이 한글/숫자면(단어 내부) 금지: 이후/토요일 같은 케이스 방지
+        # - 뒤는 단위가 오면 OK (붙여쓰기/띄어쓰기 모두)
+        # - \b 사용 금지(한글에서는 오작동): "오화재생" 같은 케이스를 못 잡음
+        pattern = rf"(?<![0-9\uac00-\ud7a3])({sino_single})(?=\s*{self._unit_re})"
+
+        return re.sub(pattern, lambda m: str(allowed[m.group(1)]), s)
+
+
+    def _convert_native_with_units(self, s: str) -> str:
+        """
+        구어 수사 + 단위: "한 번" -> "1번", "두단계" -> "2단계"
+        단위가 붙은 경우에만 변환해서 과잉 변환을 줄임
+        """
+        native = {
+            "한": 1, "두": 2, "세": 3, "네": 4,
+            "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9,
+            "열": 10,
+        }
+        pattern = rf"({'|'.join(map(re.escape, native.keys()))})\s*({self._unit_re})"
+
+        def repl(m):
+            nword = m.group(1)
+            unit = m.group(2)
+            return f"{native[nword]}{unit}"
+
+        return re.sub(pattern, repl, s)
+
+    def _join_number_units(self, s: str) -> str:
+        # "10 개" -> "10개"
+        return re.sub(rf"(\d+)\s+({self._unit_re})", r"\1\2", s)
+
+    # -----------------------------
+    # (기존) normalize(): 그대로 유지
+    # -----------------------------
     def normalize(self, text: str, remove_space: bool = False) -> str:
-        """
-        텍스트를 정규화하여 비교 가능한 형태로 변환
-        
-        정규화 과정 (순서대로 적용):
-        1. 소문자 변환 및 양쪽 공백 제거
-        2. 숫자 → 한글 숫자 읽기 변환
-        3. 한글 숫자 발음 통일 (하나→일, 둘→이 등)
-        4. 영어 알파벳 → 한글 발음 변환
-        5. 특수문자 제거 및 공백 정리
-        
-        Args:
-            text (str): 정규화할 원본 텍스트
-            remove_space (bool): 공백까지 제거할지 여부
-                - False (기본값): 공백 유지하되 연속 공백은 하나로 통일
-                - True: 공백도 완전히 제거 (CER 계산용)
-                
-        Returns:
-            str: 정규화된 텍스트
-            
-        예시:
-            normalize("ABC-123번, 볼륨 5로", remove_space=False)
-            → "에이비씨백이십삼번 볼륨오로"
-            
-            normalize("ABC-123번, 볼륨 5로", remove_space=True)
-            → "에이비씨백이십삼번볼륨오로"
-            
-        Note:
-            - 쉼표(,)는 띄어쓰기로 치환됨
-            - 한글 범위: \uac00-\ud7a3 (가-힣)
-            - 숫자, 한글, 공백(옵션)만 남기고 모든 특수문자 제거
-        """
-        # 빈 문자열 처리
-        if not text: 
+        if not text:
             return ""
-        
-        # 1단계: 기본 전처리 (소문자 변환 + 양쪽 공백 제거)
+
         s = str(text).lower().strip()
 
-        # ===================================================================
-        # 2단계: 숫자 → 한글 변환
-        # ===================================================================
-        # 정규식으로 연속된 숫자(\d+)를 찾아서 _num_to_ko로 변환
-        # 예: "123" → "백이십삼"
-        s = re.sub(r'\d+', lambda m: self._num_to_ko(m.group()), s)
-        
-        # ===================================================================
-        # 3단계: 한글 숫자 발음 통일
-        # ===================================================================
-        # "하나", "한" 같은 다양한 표현을 "일"로 통일
-        # \b는 단어 경계를 의미 (예: "하나님"의 "하나"는 매칭 안 됨)
+        # 2단계: 숫자 -> 한글 (기존 유지; 1000+는 지원X)
+        s = re.sub(r"\d+", lambda m: self._num_to_ko(m.group()), s)
+
+        # 3단계: 한글 숫자 발음 통일 (기존 유지)
         for k, v in self.num_sense_map.items():
-            s = re.sub(rf'\b{k}\b', v, s)
-        
-        # ===================================================================
-        # 4단계: 영어 → 한글 발음 변환
-        # ===================================================================
-        # 각 알파벳을 한글 발음으로 치환
-        # 예: "abc" → "에이비씨"
+            s = re.sub(rf"\b{k}\b", v, s)
+
+        # 4단계: 영어 -> 한글 발음 (기존 유지)
         for eng, ko in self.char_map.items():
             s = s.replace(eng, ko)
 
-        # ===================================================================
-        # 5단계: 특수문자 제거 및 공백 정리
-        # ===================================================================
-        
-        # 쉼표는 띄어쓰기로 치환 (구분 기호 역할 유지)
+        # 5단계: 특수문자 제거/공백 정리 (기존 유지)
         s = re.sub(r",", " ", s)
-        
+
         if remove_space:
-            # 옵션 1: 공백도 제거 (CER 계산용)
-            # [^...] : 부정 문자 클래스 (해당 문자가 아닌 것)
-            # \uac00-\ud7a3 : 한글 범위 (가-힣)
-            # 결과: 숫자와 한글만 남김
             s = re.sub(r"[^0-9\uac00-\ud7a3]", "", s)
         else:
-            # 옵션 2: 공백은 유지 (WER 계산용)
-            # \s : 공백 문자 (스페이스, 탭 등)
-            # 결과: 숫자, 한글, 공백만 남김
             s = re.sub(r"[^0-9\uac00-\ud7a3\s]", "", s)
-            
-            # 연속된 공백을 하나로 통일하고 양쪽 공백 제거
             s = re.sub(r"\s+", " ", s).strip()
-            
+
+        return s
+
+    # -----------------------------
+    # (신규) 평가용 normalize_for_eval():
+    #  - 숫자 표준형=아라비아 숫자
+    #  - "열개/십 개/10개" -> "10개"
+    #  - "이천십/2010" -> "2010"
+    #  - "일구팔팔/1988" -> "1988"
+    # -----------------------------
+    def normalize_for_eval(self, text: str, remove_space: bool = False) -> str:
+        if not text:
+            return ""
+
+        s = str(text).lower().strip()
+        s = re.sub(r",", " ", s)
+
+        # 0) 기존 구어 치환(열->십 등) 최소 반영 (단, eval에서는 1글자 치환 금지)
+        #    - "한/두/세/열" 같은 1글자들은 단위 있을 때만 숫자화하도록(아래 단계1)로 보냄
+        for k, v in self.num_sense_map.items():
+            if len(k) == 1:
+                continue
+            s = s.replace(k, v)
+
+        # 1) 구어 수사 + 단위 -> 숫자+단위 (한번/두단계 등)
+        s = self._convert_native_with_units(s)
+
+        # 1.5) ? 1글자 한자수사 + 단위 -> 숫자화 (오 화/사 점/이 년 등)
+        s = self._convert_single_sino_if_unit(s)
+
+        # 2) 자리수 읽기 -> 숫자 (일구팔팔 -> 1988)
+        s = self._convert_digit_sequence(s)
+
+        # 3) 한자식 수사(십/백/천 포함) -> 숫자 (이천십 -> 2010, 이십이 -> 22)
+        s = self._convert_sino_numbers(s)
+
+        # 4) 숫자+단위 결합
+        s = self._join_number_units(s)
+
+        # 5) 영어 -> 한글 발음 (기존과 동일 규칙 적용)
+        for eng, ko in self.char_map.items():
+            s = s.replace(eng, ko)
+
+        # 6) 특수문자 제거/공백 정리
+        if remove_space:
+            s = re.sub(r"[^0-9\uac00-\ud7a3]", "", s)
+        else:
+            s = re.sub(r"[^0-9\uac00-\ud7a3\s]", "", s)
+            s = re.sub(r"\s+", " ", s).strip()
+
         return s
 
 
-# ===========================================================================
-# 유틸리티 함수: 원본 문자열의 인덱스 매핑
-# ===========================================================================
-
 def build_norm_with_map(raw: str) -> Tuple[str, List[int]]:
     """
-    원본 문자열의 인덱스를 보존하면서 정규화하는 유틸리티 함수
-    
-    후처리(post_processor)에서 원본 텍스트의 특정 위치를 찾아서 
-    교체할 때 사용됩니다.
-    
-    Args:
-        raw (str): 원본 문자열
-        
-    Returns:
-        Tuple[str, List[int]]: 
-            - str: 정규화된 문자열 (숫자, 영어, 한글만)
-            - List[int]: 각 정규화된 문자가 원본에서 몇 번째 인덱스였는지
-            
-    동작 방식:
-        1. 원본 문자열을 소문자로 변환
-        2. 숫자, 영어(a-z), 한글(자모+완성형)만 추출
-        3. 각 추출된 문자의 원본 인덱스를 함께 저장
-        
-    예시:
-        raw = "ABC-123번"
-        norm, idx_map = build_norm_with_map(raw)
-        
-        norm = "abc123번"
-        idx_map = [0, 1, 2, 4, 5, 6, 7]
-        
-        설명:
-        - 'a' (norm[0]) ← raw[0] = 'A'
-        - 'b' (norm[1]) ← raw[1] = 'B'
-        - 'c' (norm[2]) ← raw[2] = 'C'
-        - '-' (raw[3])은 제외됨
-        - '1' (norm[3]) ← raw[4] = '1'
-        - '2' (norm[4]) ← raw[5] = '2'
-        - '3' (norm[5]) ← raw[6] = '3'
-        - '번' (norm[6]) ← raw[7] = '번'
-        
-    사용 용도:
-        후처리에서 "abc"를 "에이비씨"로 교체할 때,
-        원본 문자열의 정확한 위치(0~2번 인덱스)를 알아야 함.
-        
-    Note:
-        - 정규식 범위:
-          - 0-9: 숫자
-          - a-z: 영어 소문자
-          - \u3131-\u318e: 한글 자모 (ㄱ, ㄴ, ㅏ, ㅓ 등)
-          - \uac00-\ud7a3: 한글 완성형 (가-힣)
+    기존 그대로 유지 (postprocess에서 raw index mapping에 중요)
     """
-    # 빈 문자열 처리
-    if not raw: 
+    if not raw:
         return "", []
-    
-    # 소문자 변환
+
     raw_l = raw.lower()
-    
-    # 결과 저장용 리스트
-    norm_chars = []  # 정규화된 문자들
-    idx_map = []     # 각 문자의 원본 인덱스
-    
-    # 각 문자를 순회하면서 유효한 문자만 추출
+    norm_chars = []
+    idx_map = []
+
     for i, ch in enumerate(raw_l):
-        # 숫자, 영어, 한글(자모+완성형)인지 확인
         if re.match(r"[0-9a-z\u3131-\u318e\uac00-\ud7a3]", ch):
-            norm_chars.append(ch)  # 문자 저장
-            idx_map.append(i)      # 원본 인덱스 저장
-    
-    # 리스트를 문자열로 결합하여 반환
+            norm_chars.append(ch)
+            idx_map.append(i)
+
     return "".join(norm_chars), idx_map
