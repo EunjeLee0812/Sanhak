@@ -55,9 +55,10 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
         summary_fieldnames = [
             "experiment_type", "file", "top_k", "postprocess_on", "hotwords_strategy", 
             "bias_weight_update_cnt", "hotwords", 
-            "cer", "wer", "pn_recall", "pn_cer", "pn_wer", "replog",
+            "cer", "wer", "pn_cer", "pn_wer", "pn_recall", "replog",
             "total_wrong_char_cnt", "total_char_cnt", 
             "total_wrong_morph_cnt", "total_morph_cnt",
+            "total_wrong_pn_char_cnt", "total_pn_char_cnt", 
             "total_wrong_pn_morph_cnt", "total_pn_morph_cnt", 
             "total_file_cnt"
         ]
@@ -181,14 +182,16 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
         "hotwords": "ALL_AGGREGATED",
         "cer": f"{gt['total_wrong_char_cnt'] / max(gt['total_char_cnt'], 1):.4f}",
         "wer": f"{gt['total_wrong_morph_cnt'] / max(gt['total_morph_cnt'], 1):.4f}",
-        "pn_recall": f"{gt['pn_recall_sum'] / max(gt['pn_count'], 1):.4f}",
         "pn_cer": f"{gt['total_wrong_pn_char_cnt'] / max(gt['total_pn_char_cnt'], 1):.4f}",
         "pn_wer": f"{gt['total_wrong_pn_morph_cnt'] / max(gt['total_pn_morph_cnt'], 1):.4f}",
+        "pn_recall": f"{gt['pn_recall_sum'] / max(gt['pn_count'], 1):.4f}",
         "replog": "Total_Sum",
         "total_wrong_char_cnt": gt["total_wrong_char_cnt"],
         "total_char_cnt": gt["total_char_cnt"],
         "total_wrong_morph_cnt": gt["total_wrong_morph_cnt"],
         "total_morph_cnt": gt["total_morph_cnt"],
+        "total_wrong_pn_morph_cnt": gt["total_wrong_pn_morph_cnt"],
+        "total_pn_morph_cnt": gt["total_pn_morph_cnt"],
         "total_wrong_pn_morph_cnt": gt["total_wrong_pn_morph_cnt"],
         "total_pn_morph_cnt": gt["total_pn_morph_cnt"],
         "total_file_cnt": gt['file_count']
@@ -209,15 +212,17 @@ def _create_summary_row(key, stats):
         
         "cer": f"{stats['total_wrong_char_cnt'] / max(stats['total_char_cnt'], 1):.4f}",
         "wer": f"{stats['total_wrong_morph_cnt'] / max(stats['total_morph_cnt'], 1):.4f}",
-        "pn_recall": f"{stats['pn_recall_sum'] / max(stats['pn_count'], 1):.4f}",
         "pn_cer": f"{stats['total_wrong_pn_char_cnt'] / max(stats['total_pn_char_cnt'], 1):.4f}",
         "pn_wer": f"{stats['total_wrong_pn_morph_cnt'] / max(stats['total_pn_morph_cnt'], 1):.4f}",
+        "pn_recall": f"{stats['pn_recall_sum'] / max(stats['pn_count'], 1):.4f}",
         
         "replog": f"Files: {stats['count']}",
         "total_wrong_char_cnt": stats["total_wrong_char_cnt"],
         "total_char_cnt": stats["total_char_cnt"],
         "total_wrong_morph_cnt": stats["total_wrong_morph_cnt"],
         "total_morph_cnt": stats["total_morph_cnt"],
+        "total_wrong_pn_char_cnt": stats["total_wrong_pn_char_cnt"],
+        "total_pn_char_cnt": stats["total_pn_char_cnt"],
         "total_wrong_pn_morph_cnt": stats["total_wrong_pn_morph_cnt"],
         "total_pn_morph_cnt": stats["total_pn_morph_cnt"],
         "total_file_cnt": stats['count'],
