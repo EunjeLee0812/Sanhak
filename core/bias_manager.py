@@ -203,69 +203,16 @@ class BiasManager:
         # random.choices: 복원 추출 (중복 가능)
         # k: 선택할 개수 (top_k와 전체 단어 수 중 작은 값)
         return random.choices(words, weights=weights, k=min(top_k, len(words)))
-
+"""
     def get_weighted_hotwords_hybrid(self, top_k: int, n_fixed: int = 8) -> List[str]:
-        """
-        Hybrid 전략: Exploit(활용) + Explore(탐색) 균형
         
-        이 전략은 다음과 같이 동작합니다:
-        1. Exploit: 가중치 상위 n_fixed개는 항상 포함 (고정 슬롯)
-        2. Explore: 나머지는 가중치 기반 + 균등 샘플링 혼합
+        # Hybrid 전략(개선판):
+        # - Exploit: 가중치 상위 n_fixed개는 "항상" 포함 (고정 슬롯)
+        # - Explore: 나머지는 (1) 가중치 기반 random.choices + (2) 균등 random.sample 섞어서 선택
+        # - 최종 결과는 길이 top_k를 최대한 맞추고, 중복 제거
         
-        Args:
-            top_k (int): 선택할 총 핫워드 개수
-                예: 20
-                
-            n_fixed (int): 고정으로 포함할 상위 단어 개수
-                기본값: 8 (권장 범위: 5~10)
-                
-        Returns:
-            List[str]: 선택된 핫워드 리스트 (중복 없음, 순서 유지)
-            
-        동작 방식:
-            top_k=20, n_fixed=8인 경우:
-            
-            1. Exploit (8개): 가중치 상위 8개 고정 포함
-               → 확실히 중요한 단어들은 항상 포함
-               
-            2. Explore (12개): 나머지 12개는 탐색
-               - 6개: 가중치 기반 샘플링 (높은 가중치 선호)
-               - 6개: 균등 샘플링 (모든 단어 동등한 기회)
-               
-            3. 중복 제거 및 부족분 채우기
-               - Set을 사용하여 중복 제거
-               - 여전히 top_k 미만이면 남은 풀에서 추가 샘플링
-        
-        예시:
-            가중치: {"A": 10, "B": 8, "C": 5, "D": 3, "E": 1, "F": 0.5}
-            top_k=5, n_fixed=2
-            
-            결과:
-            - 고정 (2개): ["A", "B"]
-            - 가중치 기반 (1~2개): ["C"] 또는 ["D"]
-            - 균등 (1~2개): ["E"] 또는 ["F"]
-            
-            최종: ["A", "B", "C", "E"] (중복 제거 후)
-            
-        장점:
-            - 중요한 단어는 항상 포함 (안정성)
-            - 덜 중요한 단어도 탐색 기회 (다양성)
-            - Exploitation과 Exploration 균형
-            
-        단점:
-            - Random보다 복잡
-            - n_fixed 값 튜닝 필요
-            
-        Note:
-            - n_fixed가 너무 크면 탐색 부족 (과적합)
-            - n_fixed가 너무 작으면 불안정 (중요 단어 누락)
-            - 권장: top_k의 30~50% (예: top_k=20이면 n_fixed=6~10)
-        """
-        # 예외 처리: top_k가 0 이하면 빈 리스트 반환
-        if top_k <= 0: 
-            return []
+        if top_k <= 0: return []
 
-        # 1. 전체 단어 리스트 추출
         words = list(self.data.get("global", {}).keys())
         if not words: 
             return []
@@ -364,145 +311,110 @@ class BiasManager:
 
         # 9. 최종 결과 반환 (정확히 top_k개)
         return out[:top_k]
+"""
 
-    # ==========================================================================
-    # 학습 메서드
-    # ==========================================================================
+
+    def get_weighted_hotwords_ticket(self, top_k: int) -> List[str]:
+        """
+        [수정된 알고리즘]
+        1. Top 50%: 가중치가 가장 높은 상위 단어들을 고정으로 선택 (Exploit)
+        2. Bottom 50%: 나머지 단어들 중에서 가중치 기반 확률(Ticket)로 선택 (Explore)
+        """
+        if top_k <= 0: return []
+
+        # 1. 전체 단어 가져오기
+        words = list(self.data.get("global", {}).keys())
+        if not words: return []
+
+        # 2. 전체를 가중치 내림차순으로 정렬 (1등 ~ 꼴등 줄세우기)
+        sorted_words = sorted(words, key=lambda w: float(self.data["global"].get(w, 0.0)), reverse=True)
+
+        # 3. 고정 슬롯 개수 계산 (전체의 50%)
+        # top_k가 10이면 5개, 11이면 5개
+        n_fixed = top_k // 2
+        
+        # 예외 처리: 전체 단어 수가 top_k보다 적을 경우 안전하게 조정
+        n_fixed = min(n_fixed, len(sorted_words))
+
+        # --- [Part 1] 상위 50% 고정 선택 (Exploit) ---
+        fixed_part = sorted_words[:n_fixed]
+
+        # --- [Part 2] 나머지 50% 티켓 알고리즘 (Weighted Random) ---
+        remain_k = top_k - len(fixed_part)
+        
+        # 티켓 추첨을 할 후보군 (이미 뽑힌 상위 50% 제외)
+        pool = sorted_words[n_fixed:]
+
+        # 더 이상 뽑을 자리가 없거나, 후보가 없으면 고정된 것만 반환
+        if remain_k <= 0 or not pool:
+            return fixed_part
+
+        # 가중치(티켓) 부여: (기존 가중치 + 1.0)
+        # +1.0을 하는 이유는 가중치가 0인 새 단어도 최소한의 당첨 기회를 주기 위함
+        weights = [float(self.data["global"].get(w, 0.0)) + 1.0 for w in pool]
+
+        # 티켓 추첨 (중복 방지 로직 포함)
+        # random.choices는 복원 추출(중복 허용)이므로, 
+        # 목표 개수(remain_k)보다 넉넉하게 뽑은 뒤 중복을 제거하며 채웁니다.
+        ticket_part = []
+        seen = set()
+        
+        while len(ticket_part) < remain_k:
+            # 넉넉하게 2배수 정도 뽑아봄
+            candidates = random.choices(pool, weights=weights, k=remain_k * 2)
+            
+            added_any = False
+            for w in candidates:
+                if w not in seen:
+                    seen.add(w)
+                    ticket_part.append(w)
+                    if len(ticket_part) == remain_k:
+                        break
+                    added_any = True
+            
+            # 만약 pool에 있는 모든 종류를 다 뽑았는데도 자리가 남으면 루프 탈출 (무한루프 방지)
+            if not added_any or len(seen) >= len(pool):
+                break
+        
+        # 4. 최종 결과 반환 (고정 50% + 티켓 50%)
+        return fixed_part + ticket_part
 
     def add_miss(self, missed_entities: List[str]):
-        """
-        인식 실패한 고유명사를 학습 데이터에 추가
-        
-        이 메서드는 ASR이 놓친(miss) 고유명사들을 기록합니다.
-        나중에 finalize()에서 이 정보를 바탕으로 가중치를 증가시킵니다.
-        
-        Args:
-            missed_entities (List[str]): 놓친 고유명사 리스트
-                예: ["엠비씨", "뉴스데스크"]
-                
-        동작:
-            1. 각 놓친 고유명사에 대해
-            2. 해당 단어가 global에 있는 경우에만
-            3. session_missed에 놓친 횟수 누적
-            
-        예시:
-            # 첫 번째 파일 처리 후
-            bias_mgr.add_miss(["엠비씨"])
-            # session_missed = {"엠비씨": 1}
-            
-            # 두 번째 파일 처리 후
-            bias_mgr.add_miss(["엠비씨", "뉴스"])
-            # session_missed = {"엠비씨": 2, "뉴스": 1}
-            
-        Note:
-            - 실제 가중치 업데이트는 finalize()에서 수행
-            - global에 없는 단어는 무시 (오타 방지)
-            - session_missed는 현재 세션(반복)에서만 유효
-        """
-        # 각 놓친 고유명사에 대해
-        for ent in missed_entities:
-            # global 딕셔너리에 존재하는 경우에만 처리
-            # (오타나 잘못된 단어 필터링)
-            if ent in self.data["global"]:
-                # session_missed에 놓친 횟수 누적
-                # get(ent, 0): 기존 값이 없으면 0으로 시작
-                self.session_missed[ent] = self.session_missed.get(ent, 0) + 1
+        # 만약 data에 'global' 키 자체가 없다면 생성 (빈 파일에서 시작할 때 안전장치)
+        if "global" not in self.data:
+            self.data["global"] = {}
 
-    # ==========================================================================
-    # 유틸리티 메서드
-    # ==========================================================================
+        for ent in missed_entities:
+            # [수정된 부분]
+            # 기존: if ent in self.data["global"]: (있을 때만 처리)
+            # 변경: 없으면 0.0으로 초기화하여 추가해버림
+            if ent not in self.data["global"]:
+                self.data["global"][ent] = 0.0 
+           
+            # 이제 리스트에 확실히 존재하므로, 세션 카운트 증가
+            self.session_missed[ent] = self.session_missed.get(ent, 0) + 1
+
+
 
     def reset_biasing_list(self, path: str):
-        """
-        바이어싱 리스트를 초기 상태로 리셋
+        # 1. 데이터 완전 초기화 (단어 리스트 삭제 및 카운트 0)
+        self.data = {
+            "global": {},   # 단어 목록을 싹 비움
+            "ref_count": 0
+        }
         
-        모든 가중치를 0으로 초기화하고 참조 횟수도 0으로 되돌립니다.
-        실험을 처음부터 다시 시작할 때 사용합니다.
-        
-        Args:
-            path (str): 리셋할 JSON 파일 경로
-            
-        동작:
-            1. ref_count를 0으로 설정
-            2. global의 모든 가중치를 0으로 설정
-            3. 파일에 덮어쓰기
-            
-        주의:
-            - 기존 학습 결과가 모두 사라짐
-            - 실행 전 백업 권장
-            
-        사용 예시:
-            bias_mgr.reset_biasing_list("/data/biasing_list.json")
-        """
-        # 1. ref_count 초기화
-        self.data["ref_count"] = 0
-        
-        # 2. 모든 가중치를 0으로 설정
-        if "global" in self.data:
-            for key in self.data["global"]:
-                self.data["global"][key] = 0
+        # (선택사항) 현재 세션에서 집계 중이던 미스 카운트도 초기화
+        # 이 줄이 없으면, reset 후 finalize가 호출될 때 방금 틀린 단어가 다시 추가될 수 있음
+        self.session_missed = {} 
 
-        # 3. 파일에 덮어쓰기
+        # 2. 파일 덮어쓰기
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
 
         print(f"[SUCCESS] {path} 데이터가 모두 0으로 초기화되었습니다.")
 
-    def finalize(self, repeat: int):  # ✅ 수정: 괄호 불일치 해결
-        """
-        현재 반복(iteration)의 학습 결과를 파일에 저장
-        
-        이 메서드는 각 학습 반복이 끝날 때 호출되며:
-        1. session_missed에 기록된 놓친 횟수를 global 가중치에 반영
-        2. 업데이트된 가중치를 JSON 파일에 저장
-        3. session_missed 초기화 (다음 반복 준비)
-        
-        Args:
-            repeat (int): 현재 반복 횟수
-                예: 1, 2, 3, ...
-                (로그 출력용)
-                
-        동작 방식:
-            1. session_missed의 각 단어에 대해
-            2. global[단어] += 놓친_횟수
-            3. JSON 파일에 저장
-            4. session_missed 초기화
-            
-        예시:
-            # 반복 1 실행 전
-            global = {"엠비씨": 5.0, "뉴스": 3.0}
-            
-            # 반복 1 실행 중
-            add_miss(["엠비씨"])  # session_missed = {"엠비씨": 1}
-            add_miss(["엠비씨", "뉴스"])  # session_missed = {"엠비씨": 2, "뉴스": 1}
-            
-            # 반복 1 종료
-            finalize(repeat=1)
-            # global = {"엠비씨": 7.0, "뉴스": 4.0}
-            # session_missed = {} (초기화)
-            
-        학습 효과:
-            - 놓친 고유명사의 가중치가 증가
-            - 다음 반복에서 해당 단어가 선택될 확률 증가
-            - 반복을 거듭할수록 인식 성능 향상
-            
-        파일 저장 형식:
-            {
-                "ref_count": 15,
-                "global": {
-                    "엠비씨": 7.0,
-                    "뉴스": 4.0,
-                    ...
-                }
-            }
-            
-        Note:
-            - 중복 누적 방지를 위해 session_missed 반드시 초기화
-            - JSON 파일은 ensure_ascii=False로 저장 (한글 깨짐 방지)
-            - indent=2로 가독성 있게 저장
-        """
-        # 1. 학습 결과 반영
-        # session_missed에 기록된 놓친 횟수를 global 가중치에 누적
+    def finalize(self, bias_weight_update_cnt):
+        # ✅ 매 iteration마다 누적 반영
         if self.session_missed:
             for word, count in self.session_missed.items():
                 # 기존 가중치에 놓친 횟수만큼 추가
