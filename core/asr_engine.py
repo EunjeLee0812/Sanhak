@@ -170,52 +170,24 @@ class ASR:
             - 인식 속도: 실시간보다 3~5배 느림 (GPU 기준)
             - initial_prompt는 모든 세그먼트에 자동으로 적용됨
         """
-        # 1. 기본 파라미터 설정
-        # kwargs: keyword arguments (키워드 인자 딕셔너리)
+    # [수정] 프롬프트에 핫워드 주입 (가장 강력한 힌트)
+    # 예: "가요톱텐, 강호동, 엠비씨 뉴스데스크, ..." 형태로 만듦
+        dynamic_prompt = self.korean_only_prompt
+        if hotwords and len(hotwords) > 0:
+            # 상위 핫워드들을 콤마로 연결하여 프롬프트 앞단에 배치
+            hotword_str = ", ".join(hotwords) 
+            dynamic_prompt = f"{hotword_str}, {self.korean_only_prompt}"
+
         kwargs: Dict[str, Any] = {
-            # 언어 지정 (auto로 설정하면 자동 감지하지만 느림)
             "language": lang,
-            
-            # Beam search 크기 (더 많은 경로 탐색)
             "beam_size": beam_size,
-            
-            # 초기 프롬프트 (한국어 맥락 제공)
-            # 생성자에서 저장한 한국어 프롬프트 사용
-            "initial_prompt": self.korean_only_prompt,
-            
-            # VAD 필터 활성화
-            # True: 무음 구간 자동 제거 (권장)
-            # False: 무음도 처리 (느림)
+            "initial_prompt": dynamic_prompt, # 주입된 프롬프트 사용
             "vad_filter": True
         }
         
-        # 2. Hotwords 처리 (있는 경우에만 추가)
-        # Hotwords는 쉼표(,)로 구분된 문자열로 변환하여 전달
+        # faster-whisper 자체 파라미터도 같이 사용 (시너지 효과)
         if hotwords and len(hotwords) > 0:
-            # 리스트를 쉼표로 연결
-            # 예: ["엠비씨", "뉴스"] → "엠비씨,뉴스"
             kwargs["hotwords"] = ",".join(hotwords)
-        
-        # 3. 음성인식 실행
-        # model.transcribe()는 Generator를 반환
-        # segs: 세그먼트들의 제너레이터 (각 세그먼트는 Segment 객체)
-        # _: 추가 정보 (언어 확률, 지속 시간 등) - 현재는 사용 안 함
+
         segs, _ = self.model.transcribe(path, **kwargs)
-        
-        # 4. 모든 세그먼트의 텍스트 결합
-        # 제너레이터를 순회하며 각 세그먼트의 .text 속성 추출
-        # "".join()으로 공백 없이 연결
-        # .strip()으로 양쪽 공백 제거
-        
-        # 동작 예시:
-        # segs = [
-        #     Segment(text="엠비씨 뉴스데스크", start=0.0, end=2.5),
-        #     Segment(text=" 틀어줘", start=2.5, end=4.0)
-        # ]
-        # 
-        # 결과:
-        # s.text for s in segs → ["엠비씨 뉴스데스크", " 틀어줘"]
-        # "".join(...) → "엠비씨 뉴스데스크 틀어줘"
-        # .strip() → "엠비씨 뉴스데스크 틀어줘"
-        
         return "".join(s.text for s in segs).strip()
