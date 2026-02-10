@@ -65,25 +65,26 @@ def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
         f.write("\n\n")
         f.write("=== [SECTION 3] SUMMARY STATISTICS (실험 요약) ===\n\n")
         writer_sum = csv.DictWriter(f, fieldnames=summary_fieldnames)
-        writer_sum.writeheader()
 
-        # (1) Proposed 요약 계산 및 저장
-        if rows_proposed:
-            summary_rows_prop = _calculate_summary(rows_proposed, "PROPOSED_TOTAL_AVG")
-            writer_sum.writerows(summary_rows_prop)
-
-        # (2) Baseline 요약 계산 및 저장
+        # (1) Baseline 요약 계산 및 저장
         if rows_baseline:
             writer_sum.writeheader()
             # Baseline은 파라미터 변화가 없으므로 하나의 행으로 요약됩니다.
             summary_rows_base = _calculate_summary(rows_baseline, "BASELINE_TOTAL_AVG")
             writer_sum.writerows(summary_rows_base)
 
+        # (2) Proposed 요약 계산 및 저장
+        if rows_proposed:
+            f.write("\n")
+            writer_sum.writeheader()
+            summary_rows_prop = _calculate_summary(rows_proposed, "PROPOSED_TOTAL_AVG")
+            writer_sum.writerows(summary_rows_prop)
+
+
     print(f"[SUCCESS] 상세 및 비교 요약 결과가 {output_path}에 저장되었습니다.")
 
 
 def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> List[Dict[str, Any]]:
-    
     
     """
     [내부 함수] 특정 행 리스트(rows)를 받아 그룹별 요약 통계를 계산합니다.
@@ -91,21 +92,11 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
     baseline 리스트를 순회하며 '연속된' 동일 설정 그룹끼리만 묶어서 요약합니다.
     예: Baseline(cnt=1) -> Baseline(cnt=2) -> Baseline(cnt=1) 순서로 들어오면
         3개의 별도 요약 행이 생성됩니다. (기존엔 Key가 같으면 다 합쳐졌음)
-
-
-    Args:
-        target_rows: 요약할 데이터 리스트
-        total_label: Grand Total 행에 표시할 라벨 (예: "PROPOSED_TOTAL")
-        
-    Returns:
-        List[Dict]: 요약된 통계 데이터 리스트
     """
 
     summary_rows = []
-
-    agg = {}
     
-    # 전체 합계(Grand Total)를 계산하기 위한 누적 변수 초기화
+    # 전체 합계(Grand Total)를 계산하기 위한 변수
     gt = { 
         "total_wrong_char_cnt": 0, "total_char_cnt": 0,
         "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
@@ -114,40 +105,32 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
         "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0,
         "file_count": 0
     }
-    # 현재 처리 중인 그룹의 상태
+
+    # 현재 처리 중인 그룹의 상태 (초기화)
     current_key = None
-    current_stats = current_stats = {
-                    "count": 0,
-                    "total_wrong_char_cnt": 0, "total_char_cnt": 0,
-                    "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
-                    "total_wrong_pn_char_cnt": 0, "total_pn_char_cnt": 0,
-                    "total_wrong_pn_morph_cnt": 0, "total_pn_morph_cnt": 0,
-                    "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0
-            }
+    current_stats = None
 
     for r in target_rows:
-        # 그룹화 키 생성 (이 조건들이 같은 행끼리 묶어서 평균을 냄)
-        # baseline 데이터냐, proposed 데이터냐에 따라 key 값이 다르게 함
-
+        # 그룹화 키 생성
         key = (
             r.get("top_k", ""),
             r.get("postprocess_on", ""),
             r.get("hotwords_strategy", ""),
             r.get("bias_weight_update_cnt", ""),
-            str(r.get("hotwords", "")), # 리스트는 해싱 불가능하므로 문자열로 변환
+            str(r.get("hotwords", "")),
             r.get("experiment_type", "")
         )
 
-        # 키가 바뀌면 이전 그룹 정산 후 새 그룹 시작
-        if key != current_key and r["experiment_type"]=="baseline":
+        # 1. 키가 바뀌었는지 확인 (새로운 그룹 시작)
+        if key != current_key:
+            # 기존 그룹이 있었다면 저장 (Flush)
             if current_stats is not None:
-                current_key = key
                 summary_rows.append(_create_summary_row(current_key, current_stats))
-                
-
-        if key not in agg:
-            agg[key] = {
-                "count": 0, # 해당 그룹에 속한 파일 수
+            
+            # 새 그룹 초기화
+            current_key = key
+            current_stats = {
+                "count": 0,
                 "total_wrong_char_cnt": 0, "total_char_cnt": 0,
                 "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
                 "total_wrong_pn_char_cnt": 0, "total_pn_char_cnt": 0,
@@ -155,8 +138,8 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
                 "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0
             }
 
-        # 데이터 누적 (개별 그룹용)
-        g = agg[key]
+        # 2. 현재 그룹에 데이터 누적 (Dictionary Aggregation이 아님)
+        g = current_stats
         g["count"] += 1
         g["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
         g["total_char_cnt"] += float(r.get("char_cnt", 0))
@@ -167,7 +150,6 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
         g["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0))
         g["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))
 
-        # 고유명사(PN) 지표는 유효한 경우(None이 아님)에만 누적
         if r.get("pn_recall") is not None:
             g["pn_recall_sum"] += float(r["pn_recall"])
             g["pn_cer_sum"] += float(r["pn_cer"])
@@ -177,7 +159,7 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
             gt["pn_recall_sum"] += float(r["pn_recall"])
             gt["pn_count"] += 1
 
-        # Grand Total(전체 합계) 누적
+        # Grand Total 누적
         gt["file_count"] += 1
         gt["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
         gt["total_char_cnt"] += float(r.get("char_cnt", 0))
@@ -188,34 +170,14 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
         gt["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0))
         gt["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))
 
-    # 집계된 데이터를 바탕으로 평균(CER, WER 등)을 계산하여 요약 리스트 생성
-    summary_rows = []
-    for key, stats in agg.items():
-        top_k, pp_on, strat, bias_cnt, hw, exp_type = key
-        
-        row = {
-            "experiment_type": exp_type,
-            "file": "Group_Average", # 개별 파일명이 아닌 평균임을 명시
-            "top_k": top_k, "postprocess_on": pp_on,
-            "hotwords_strategy": strat, "bias_weight_update_cnt": bias_cnt,
-            "hotwords": hw,
-            
-            # 0으로 나누기 방지 (max(..., 1))
-            "cer": f"{stats['total_wrong_char_cnt'] / max(stats['total_char_cnt'], 1):.4f}",
-            "wer": f"{stats['total_wrong_morph_cnt'] / max(stats['total_morph_cnt'], 1):.4f}",
-            "pn_recall": f"{stats['pn_recall_sum'] / max(stats['pn_count'], 1):.4f}",
-            "pn_cer": f"{stats['total_wrong_pn_char_cnt'] / max(stats['total_pn_char_cnt'], 1):.4f}",
-            "pn_wer": f"{stats['total_wrong_pn_morph_cnt'] / max(stats['total_pn_morph_cnt'], 1):.4f}",
-            
-            "replog": f"Files: {stats['count']}",
-            "total_file_cnt": stats['count'],
-        }
-        summary_rows.append(row)
+    # 3. 마지막 그룹 저장 (루프가 끝나서 저장되지 못한 마지막 항목 처리)
+    if current_stats is not None:
+        summary_rows.append(_create_summary_row(current_key, current_stats))
 
-    # 마지막에 전체 평균(Grand Total) 행 추가
+    # 4. 전체 평균(Grand Total) 행 추가
     gt_row = {
         "experiment_type": "TOTAL",
-        "file": total_label, # 예: PROPOSED_TOTAL_AVG
+        "file": total_label, 
         "hotwords": "ALL_AGGREGATED",
         "cer": f"{gt['total_wrong_char_cnt'] / max(gt['total_char_cnt'], 1):.4f}",
         "wer": f"{gt['total_wrong_morph_cnt'] / max(gt['total_morph_cnt'], 1):.4f}",
@@ -223,6 +185,12 @@ def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> L
         "pn_cer": f"{gt['total_wrong_pn_char_cnt'] / max(gt['total_pn_char_cnt'], 1):.4f}",
         "pn_wer": f"{gt['total_wrong_pn_morph_cnt'] / max(gt['total_pn_morph_cnt'], 1):.4f}",
         "replog": "Total_Sum",
+        "total_wrong_char_cnt": gt["total_wrong_char_cnt"],
+        "total_char_cnt": gt["total_char_cnt"],
+        "total_wrong_morph_cnt": gt["total_wrong_morph_cnt"],
+        "total_morph_cnt": gt["total_morph_cnt"],
+        "total_wrong_pn_morph_cnt": gt["total_wrong_pn_morph_cnt"],
+        "total_pn_morph_cnt": gt["total_pn_morph_cnt"],
         "total_file_cnt": gt['file_count']
     }
     summary_rows.append(gt_row)
@@ -246,5 +214,11 @@ def _create_summary_row(key, stats):
         "pn_wer": f"{stats['total_wrong_pn_morph_cnt'] / max(stats['total_pn_morph_cnt'], 1):.4f}",
         
         "replog": f"Files: {stats['count']}",
+        "total_wrong_char_cnt": stats["total_wrong_char_cnt"],
+        "total_char_cnt": stats["total_char_cnt"],
+        "total_wrong_morph_cnt": stats["total_wrong_morph_cnt"],
+        "total_morph_cnt": stats["total_morph_cnt"],
+        "total_wrong_pn_morph_cnt": stats["total_wrong_pn_morph_cnt"],
+        "total_pn_morph_cnt": stats["total_pn_morph_cnt"],
         "total_file_cnt": stats['count'],
     }
