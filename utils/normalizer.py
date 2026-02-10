@@ -259,6 +259,19 @@ class TextNormalizer:
         # 4) 숫자+단위 결합
         s = self._join_number_units(s)
 
+        # ==========================
+        # eval 전용: 4K 표준화 (정답 표기= "사 케이"로 통일)
+        # ==========================
+        # 4K / 4 케이 / 사케이 / 사 케이 / 포케이 / 포 케이  -> "사 케이"
+
+        WS = r"[\s\u200b\u200c\u200d\uFEFF]*"
+
+        s = re.sub(rf"4{WS}k", "사 케이", s, flags=re.IGNORECASE)
+        s = re.sub(rf"4{WS}케{WS}이", "사 케이", s)
+        s = re.sub(rf"사{WS}케{WS}이", "사 케이", s)
+        s = re.sub(rf"포{WS}케{WS}이", "사 케이", s)
+
+
         # 5) 영어 -> 한글 발음 (기존과 동일 규칙 적용)
         for eng, ko in self.char_map.items():
             s = s.replace(eng, ko)
