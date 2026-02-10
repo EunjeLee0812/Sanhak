@@ -138,12 +138,12 @@ def best_proper_noun_match(ent: str, hyp: str, normalizer, tol: int = RULE_TOL, 
 
 def evaluate_proper_nouns(
     ents: List[str],
-    hyp_final: str,
+    hyp_normalized: str,
     normalizer,
     match_th: float = PN_MATCH_TH,
     hotwords: List[str] = [] 
     # soft_th: float = SOFT_MISS_TH
-) -> Tuple[Optional[float], float, int, Optional[float], float, int, float, List[str], List[str], List[str]]: #수정: 엔티티가 없는 경우 pn_recall = 0이 됨 -> None 반환해서 집계에서 제외
+) -> Tuple[Optional[float], float, int, Optional[float], float, int, float, List[str], List[str], List[str], str]: #수정: 엔티티가 없는 경우 pn_recall = 0이 됨 -> None 반환해서 집계에서 제외
     """
     고유명사(Entities) 인식 성능을 평가하는 함수.
     
@@ -155,13 +155,14 @@ def evaluate_proper_nouns(
     """
 
     if not ents:
-        return None, 0.0,0,None,0.0,0,0.0, [], [], []
+        return None, 0.0,0,None,0.0,0,0.0, [], [], [], hyp_normalized
 
     cers: List[float] = []
     hyp_pn: List[str] = []
     soft_missed: List[str] = []
     hotwords_hit: List[str] = [] # 핫워드 적중 리스트
     
+    hyp_final=hyp_normalized
     #전체 pn_ents 수
     #PN_WER 계산 변수
     ref_total_pn_ents_cnt=len(ents)
@@ -187,15 +188,25 @@ def evaluate_proper_nouns(
         #hyp_ent가 틀렸으면 틀린 단어 개수에 추가
         if cer>0.01: 
             hyp_total_wrong_pn_ents_cnt+=1
-            if ent in hotwords_norm_set:
+            # 2. 맞힌 경우 (Hit) - 여기서 교정 작업 수행!
+        else:
+            # [NEW] 텍스트 교정 로직
+            # matched_sub(인식된 텍스트, 예: '애플티비 플러스')를 ent(정답, 예: '애플티비플러스')로 교체
+            if matched_sub and matched_sub in hyp_final:
+                # replace는 모든 등장 횟수를 바꾸므로 주의가 필요하지만, 
+                # 고유명사는 문장 내 유일한 경우가 많으므로 현재 단계에선 유효함.
+                hyp_final = hyp_final.replace(matched_sub, ent)
+
+            # 핫워드 적중 체크 (맞힌 경우에만 체크하는 것이 논리적으로 맞음)
+            ent_norm = normalizer.normalize(ent, remove_space=True)
+            if ent_norm in hotwords_norm_set:
                 hotwords_hit.append(ent)
- 
-        cers.append(cer)
         
         # 결과 정리 (1글자 짜리는 노이즈로 보고 빈값 처리)
+        cers.append(cer)
+
         cleaned = (matched_sub or "").replace(" ", "").strip()
         hyp_pn.append(cleaned if len(cleaned) >= 2 else "")
-
 
     
         # ✅ 2. 살짝 틀린 것들만 골라내기 (Soft Miss Logic)
@@ -214,7 +225,7 @@ def evaluate_proper_nouns(
       pn_cer = 0.0  
     pn_wer=hyp_total_wrong_pn_ents_cnt/ref_total_pn_ents_cnt
     
-    return pn_recall, hyp_total_wrong_pn_char_cnt, ref_total_pn_char_cnt, pn_cer, hyp_total_wrong_pn_ents_cnt, ref_total_pn_ents_cnt, pn_wer, hyp_pn, soft_missed, hotwords_hit
+    return pn_recall, hyp_total_wrong_pn_char_cnt, ref_total_pn_char_cnt, pn_cer, hyp_total_wrong_pn_ents_cnt, ref_total_pn_ents_cnt, pn_wer, hyp_pn, soft_missed, hotwords_hit, hyp_final
         
 
 
