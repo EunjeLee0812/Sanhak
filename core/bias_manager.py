@@ -517,5 +517,4 @@ class BiasManager:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         
         # 4. 로그 출력
-        print("[LEARNING] 가중치 데이터베이스 저장 완료.")
-        print(f"\n[LEARNING] {repeat}회차 누적 저장 완료. (반복횟수={self.data['ref_count']})")
+        print(f"\n[LEARNING] {repeat+1}회차 가중치 누적 저장 완료. (반복횟수={self.data['ref_count']})")

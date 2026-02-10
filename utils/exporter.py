@@ -1,270 +1,250 @@
 import os, csv
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Any, Tuple
-from config.settings import AUDIO_FILE_MAX
+from typing import Dict, List, Any, Tuple
 
 def save_results_with_summary(rows: List[Dict[str, Any]], output_path: str):
+    """
+    실험 결과를 CSV로 저장하는 함수.
+    
+    [기능 변경 사항]
+    1. 단순히 데이터를 저장하는 것을 넘어, 'experiment_type' 키를 기준으로
+       'Proposed(제안 방법)'과 'Baseline(베이스라인)' 데이터를 분리하여 저장합니다.
+    2. CSV 파일 내에서 섹션을 나누어 가독성을 높였습니다.
+    3. 요약(Summary) 통계도 실험 타입별로 각각 계산하여 하단에 첨부합니다.
+    """
     if not rows:
         print("[WARN] 저장할 데이터가 없습니다.")
         return
 
-    # 1. 상세 데이터 저장 (Detail)
-    # --------------------------------------------------------------------------
-    # 상세 데이터에 있는 키들만 추출하여 헤더로 사용
-    detail_fieldnames = list(rows[0].keys())
+    # 1. 데이터 분리: 리스트 컴프리헨션을 사용하여 실험 타입별로 행을 나눕니다.
+    # - proposed: 핫워드 바이어싱 + 프롬프트 적용 (우리가 연구한 모델)
+    # - baseline: 순정 Whisper (비교군)
+    rows_proposed = [r for r in rows if r.get("experiment_type") == "proposed"]
+    rows_baseline = [r for r in rows if r.get("experiment_type") == "baseline"]
+
+    # CSV 헤더(Fieldnames) 추출 (모든 행이 동일한 키를 가진다고 가정)
+    fieldnames = list(rows[0].keys()) if rows else []
     
     with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
-        # [Writer 1] 상세 데이터용 Writer 생성
-        w_detail = csv.DictWriter(f, fieldnames=detail_fieldnames)
-        w_detail.writeheader()
-        w_detail.writerows(rows)
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+
+
+        # ======================================================================
+        # [SECTION 1] 상세 데이터 저장 (Detail)
+        # ====================================================================++
+        # (1) Baseline Data (베이스라인) 저장
+
+        if rows_baseline:
+            f.write("=== [SECTION 1] DETAIL: WITHOUT Prompt & Hotwords (Baseline / 비교군) ===\n")
+            f.write("\n")
+            writer.writeheader()
+            writer.writerows(rows_baseline)
+            f.write("\n")
+        # (2) Proposed Data (제안 방법) 저장
+        if rows_proposed:
+            f.write("=== [SECTION 2] DETAIL: WITH Prompt & Hotwords (Proposed / 제안 방법) ===\n")
+            f.write("\n") # 가독성을 위한 빈 줄 추가
+            writer.writeheader()
+            writer.writerows(rows_proposed)
+
+
+        # ======================================================================
+        # [SECTION 2] 요약 데이터 집계 및 저장 (Summary Statistics)
+        # ======================================================================
         
-        # 2. 요약 데이터 집계 (Aggregation)
-        # ----------------------------------------------------------------------
-        agg = {} 
+        # 요약 데이터 전용 필드 정의 (기존 상세 데이터 필드와 다름)
+        summary_fieldnames = [
+            "experiment_type", "file", "top_k", "postprocess_on", "hotwords_strategy", 
+            "bias_weight_update_cnt", "hotwords", 
+            "cer", "wer", "pn_recall", "pn_cer", "pn_wer", "replog",
+            "total_wrong_char_cnt", "total_char_cnt", 
+            "total_wrong_morph_cnt", "total_morph_cnt",
+            "total_wrong_pn_morph_cnt", "total_pn_morph_cnt", 
+            "total_file_cnt"
+        ]
+        
+        f.write("\n\n")
+        f.write("=== [SECTION 3] SUMMARY STATISTICS (실험 요약) ===\n\n")
+        writer_sum = csv.DictWriter(f, fieldnames=summary_fieldnames)
+        writer_sum.writeheader()
 
-        # [Grand Total] 전체 합계를 위한 변수 초기화
-        gt = {
-            "total_wrong_char_cnt": 0, "total_char_cnt": 0,
-            "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
-            "total_pn_hits": 0.0, "total_pn_ents": 0, # Recall용 (분자/분모)
-            "total_wrong_pn_char_cnt": 0.0, "total_pn_char_cnt": 0, # CER용 (분자/분모)
-            "total_wrong_pn_morph_cnt": 0.0, "total_pn_morph_cnt": 0, # WER용 (분자/분모)
-            "file_count": 0, "pn_count":0, #None이 아닌 pn_recall 개수,
-            "pn_recall_sum":0, "total_files_num":0
-        }
+        # (1) Proposed 요약 계산 및 저장
+        if rows_proposed:
+            summary_rows_prop = _calculate_summary(rows_proposed, "PROPOSED_TOTAL_AVG")
+            writer_sum.writerows(summary_rows_prop)
 
-        for r in rows:
-            # 그룹화 키 생성
-            hotwords_key = str(r["hotwords"])
-            
-            key = (
-                r["top_k"],
-                r["postprocess_on"],
-                r["hotwords_strategy"],
-                r["bias_weight_update_cnt"],
-                hotwords_key, 
-            )
+        # (2) Baseline 요약 계산 및 저장
+        if rows_baseline:
+            writer_sum.writeheader()
+            # Baseline은 파라미터 변화가 없으므로 하나의 행으로 요약됩니다.
+            summary_rows_base = _calculate_summary(rows_baseline, "BASELINE_TOTAL_AVG")
+            writer_sum.writerows(summary_rows_base)
 
-            if key not in agg:
-                agg[key] = {
-                    "count": 0, 
+    print(f"[SUCCESS] 상세 및 비교 요약 결과가 {output_path}에 저장되었습니다.")
+
+
+def _calculate_summary(target_rows: List[Dict[str, Any]], total_label: str) -> List[Dict[str, Any]]:
+    
+    
+    """
+    [내부 함수] 특정 행 리스트(rows)를 받아 그룹별 요약 통계를 계산합니다.
+    [수정 함수] 
+    baseline 리스트를 순회하며 '연속된' 동일 설정 그룹끼리만 묶어서 요약합니다.
+    예: Baseline(cnt=1) -> Baseline(cnt=2) -> Baseline(cnt=1) 순서로 들어오면
+        3개의 별도 요약 행이 생성됩니다. (기존엔 Key가 같으면 다 합쳐졌음)
+
+
+    Args:
+        target_rows: 요약할 데이터 리스트
+        total_label: Grand Total 행에 표시할 라벨 (예: "PROPOSED_TOTAL")
+        
+    Returns:
+        List[Dict]: 요약된 통계 데이터 리스트
+    """
+
+    summary_rows = []
+
+    agg = {}
+    
+    # 전체 합계(Grand Total)를 계산하기 위한 누적 변수 초기화
+    gt = { 
+        "total_wrong_char_cnt": 0, "total_char_cnt": 0,
+        "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
+        "total_wrong_pn_char_cnt": 0, "total_pn_char_cnt": 0,
+        "total_wrong_pn_morph_cnt": 0, "total_pn_morph_cnt": 0,
+        "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0,
+        "file_count": 0
+    }
+    # 현재 처리 중인 그룹의 상태
+    current_key = None
+    current_stats = current_stats = {
+                    "count": 0,
                     "total_wrong_char_cnt": 0, "total_char_cnt": 0,
                     "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
                     "total_wrong_pn_char_cnt": 0, "total_pn_char_cnt": 0,
                     "total_wrong_pn_morph_cnt": 0, "total_pn_morph_cnt": 0,
                     "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0
-                }
-
-            # 데이터 누적
-            g = agg[key]
-            g["count"] += 1
-            g["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
-            g["total_char_cnt"] += float(r.get("char_cnt", 0))
-
-            g["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0)) 
-            g["total_morph_cnt"] += float(r.get("morph_cnt", 0))         
-
-            g["total_wrong_pn_char_cnt"] += float(r.get("wrong_pn_char_cnt", 0)) 
-            g["total_pn_char_cnt"] += float(r.get("pn_char_cnt", 0))        
-
-            g["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0)) 
-            g["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))        
-
-
-            # PN 지표는 값이 있는 경우(None이 아닌 경우)에만 합산
-            if r.get("pn_recall") is not None:
-                g["pn_recall_sum"] += float(r["pn_recall"])
-                g["pn_cer_sum"] += float(r["pn_cer"])
-                g["pn_count"] += 1
-                gt["pn_recall_sum"]+=float(r["pn_recall"])
-                gt["pn_count"]+=1
-
-            # (2) 전체 합계 집계 (Grand Total용)
-            gt["file_count"] += 1
-            #전체 CER
-            gt["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
-            gt["total_char_cnt"] += float(r.get("char_cnt", 0))
-            #전체 WER
-            gt["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0))
-            gt["total_morph_cnt"] += float(r.get("morph_cnt", 0))
-            #전체 고유명사 CER
-            gt["total_wrong_pn_char_cnt"] += float(r.get("wrong_pn_char_cnt", 0))
-            gt["total_pn_char_cnt"] += float(r.get("pn_char_cnt", 0))
-            #전체 고유명사 WER
-            gt["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0))
-            gt["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))
-
-            # PN 지표 정밀 계산 (역산 로직)
-            ents = r.get("ref_pn", [])
-            if ents and r.get("pn_recall") is not None:
-                n_ents = len(ents)
-                gt["total_pn_ents"] += n_ents
-                gt["total_pn_hits"] += float(r["pn_recall"]) * n_ents
-
-                n_chars = sum(len(str(e).replace(" ", "")) for e in ents)
-                gt["total_pn_char_cnt"] += n_chars
-                gt["total_wrong_pn_char_cnt"] += float(r["pn_cer"]) * n_chars
-
-        # 3. 요약 데이터 리스트 생성
-        # ----------------------------------------------------------------------
-        summary_rows = []
-
-        for key in agg:
-            top_k, pp_on, strat, bias_cnt, hotwords= key
-            stats = agg[key]
-            
-            # Global Average 계산
-            global_cer = stats["total_wrong_char_cnt"] / stats["total_char_cnt"] if stats["total_char_cnt"] > 0 else 0.0
-            global_wer = stats["total_wrong_morph_cnt"] / stats["total_morph_cnt"] if stats["total_morph_cnt"] > 0 else 0.0
-
-            # PN 지표 (Macro Average)
-            global_pn_recall = stats["pn_recall_sum"] / stats["pn_count"] if stats["pn_count"] > 0 else 0.0
-            global_pn_cer = stats["total_wrong_pn_char_cnt"] / stats["total_pn_char_cnt"] if stats["total_pn_char_cnt"] > 0 else 0.0
-            global_pn_wer = stats["total_wrong_pn_morph_cnt"] / stats["total_pn_morph_cnt"] if stats["total_pn_morph_cnt"] > 0 else 0.0            
-                
-            summary_row = {
-                "file": "Total_Average", # 파일명 대신 요약임을 표시
-                "top_k": top_k,
-                "postprocess_on": pp_on,
-                "hotwords_strategy": strat,
-                "bias_weight_update_cnt": bias_cnt,
-                "hotwords": hotwords,
-                
-                "cer": f"{global_cer:.4f}",
-                "wer": f"{global_wer:.4f}",
-                "pn_recall": f"{global_pn_recall:.4f}",
-                "pn_cer": f"{global_pn_cer:.4f}",
-                "pn_wer": f"{global_pn_wer:.4f}",
-                
-                # [수정] 필드명 통일 (file_cnt -> total_file_cnt)
-                "replog": f"Total Files: {stats['count']}",
-                "total_wrong_char_cnt": stats["total_wrong_char_cnt"],
-                "total_char_cnt": stats["total_char_cnt"],
-                "total_wrong_morph_cnt": stats["total_wrong_morph_cnt"],
-                "total_morph_cnt": stats["total_morph_cnt"],
-                "total_wrong_pn_morph_cnt": stats["total_wrong_pn_morph_cnt"],
-                "total_pn_morph_cnt": stats["total_pn_morph_cnt"],
-                "total_file_cnt": stats["count"]  # 여기를 통일했습니다
             }
-            summary_rows.append(summary_row)
 
-        # (2) 최종 요약 (Grand Total) - 맨 마지막에 추가
-        grand_cer = gt["total_wrong_char_cnt"] / gt["total_char_cnt"] if gt["total_char_cnt"] > 0 else 0.0
-        grand_wer = gt["total_wrong_morph_cnt"] / gt["total_morph_cnt"] if gt["total_morph_cnt"] > 0 else 0.0
-        
-        # PN 지표 (Macro Average)
-        grand_pn_recall = gt["pn_recall_sum"] / gt["pn_count"] if gt["pn_count"] > 0 else 0.0
-        grand_pn_cer = gt["total_wrong_pn_char_cnt"] / gt["total_pn_char_cnt"] if gt["total_pn_char_cnt"] > 0 else 0.0
-        grand_pn_wer = gt["total_wrong_pn_morph_cnt"] / gt["total_pn_morph_cnt"] if gt["total_pn_morph_cnt"] > 0 else 0.0
-        
-        grand_total_row = {
-            "file": "GRAND_TOTAL", # 눈에 띄게 표시
-            "top_k": "", "postprocess_on": "", "hotwords_strategy": "",
-            "hotwords": "Total_mean", "bias_weight_update_cnt": "",
-            
-            "cer": f"{grand_cer:.4f}",
-            "wer": f"{grand_wer:.4f}",
-            "pn_recall": f"{grand_pn_recall:.4f}",
-            "pn_cer": f"{grand_pn_cer:.4f}",
-            "pn_wer": f"{grand_pn_wer:.4f}", # 오타 수정 (fstring 위치)
-
-            "replog": "Total_sum",
-            "total_wrong_char_cnt": gt["total_wrong_char_cnt"],
-            "total_char_cnt": gt["total_char_cnt"],
-            "total_wrong_morph_cnt": gt["total_wrong_morph_cnt"],
-            "total_morph_cnt": gt["total_morph_cnt"],
-            "total_wrong_pn_morph_cnt": gt["total_wrong_pn_morph_cnt"],
-            "total_pn_morph_cnt": gt["total_pn_morph_cnt"],
-            "total_file_cnt": gt["file_count"] # 여기도 통일했습니다
-        }
-        summary_rows.append(grand_total_row)
-        
-
-        # 4. 요약 데이터 저장 (새로운 Writer 사용)
-        # ----------------------------------------------------------------------
-        if summary_rows:
-            f.write("\n") # 상세 데이터와 구분하기 위해 빈 줄 추가
-            
-            # [수정] 헤더 이름 통일 (total_file_cnt)
-            summary_fieldnames = [
-                "file", "top_k", "postprocess_on", "hotwords_strategy", 
-                "bias_weight_update_cnt", "hotwords", 
-                "cer", "wer", "pn_recall", "pn_cer", "pn_wer","replog",
-                # 상세 데이터엔 없던 새로운 필드들 추가
-                "total_wrong_char_cnt", "total_char_cnt", 
-                "total_wrong_morph_cnt", "total_morph_cnt",
-                "total_wrong_pn_morph_cnt", "total_pn_morph_cnt", 
-                "total_file_cnt" # 수정됨
-            ]
-            
-            # [Writer 2] 요약 데이터용 Writer 생성
-            w_summary = csv.DictWriter(f, fieldnames=summary_fieldnames)
-            w_summary.writeheader() 
-            w_summary.writerows(summary_rows)
-
-    print(f"[SUCCESS] 상세 및 요약 결과가 {output_path}에 저장되었습니다.")
-
-
-def summarize(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    # key는 4개이므로 Tuple[int, int, str, int]
-    agg: Dict[Tuple[int, int, str, int], Dict[str, Any]] = {}
-
-    for r in rows:
-        hotwords_strategy = r.get("hotwords_strategy", "random")
-        bias_weight_update_cnt = int(r.get("bias_weight_update_cnt", 0))
+    for r in target_rows:
+        # 그룹화 키 생성 (이 조건들이 같은 행끼리 묶어서 평균을 냄)
+        # baseline 데이터냐, proposed 데이터냐에 따라 key 값이 다르게 함
 
         key = (
-            int(r["top_k"]),
-            int(r["postprocess_on"]), 
-            hotwords_strategy,
-            bias_weight_update_cnt,
+            r.get("top_k", ""),
+            r.get("postprocess_on", ""),
+            r.get("hotwords_strategy", ""),
+            r.get("bias_weight_update_cnt", ""),
+            str(r.get("hotwords", "")), # 리스트는 해싱 불가능하므로 문자열로 변환
+            r.get("experiment_type", "")
         )
 
-        a = agg.setdefault(
-            key,
-            {
-                "top_k": key[0],
-                "postprocess_on": key[1],
-                "hotwords_strategy": key[2],
-                "bias_weight_update_cnt": key[3],
-                "files_num": 0,
-                "global_cer": 0.0,
-                "global_wer": 0.0,
-                "pn_recall_sum": 0.0,
-                "pn_cer_sum": 0.0,
-                "pn_count": 0,
-                "total_wrong_char_cnt":0,
-                "total_char_cnt":0, 
-                "total_wrong_morph_cnt":0, 
-                "total_morph_cnt":0
-            },
-        )
+        # 키가 바뀌면 이전 그룹 정산 후 새 그룹 시작
+        if key != current_key and r["experiment_type"]=="baseline":
+            if current_stats is not None:
+                current_key = key
+                summary_rows.append(_create_summary_row(current_key, current_stats))
+                
 
-        #파일 개수 및 전체 cer, wer 계산
-        a["files_num"] += 1
-        a["total_wrong_char_cnt"] += float(r["wrong_char_cnt"])
-        a["total_wrong_morph_cnt"] += float(r["wrong_morph_cnt"])
-        a["total_char_cnt"]+=r["char_cnt"]
-        a["total_morph_cnt"]+=r["morph_cnt"]
+        if key not in agg:
+            agg[key] = {
+                "count": 0, # 해당 그룹에 속한 파일 수
+                "total_wrong_char_cnt": 0, "total_char_cnt": 0,
+                "total_wrong_morph_cnt": 0, "total_morph_cnt": 0,
+                "total_wrong_pn_char_cnt": 0, "total_pn_char_cnt": 0,
+                "total_wrong_pn_morph_cnt": 0, "total_pn_morph_cnt": 0,
+                "pn_recall_sum": 0.0, "pn_cer_sum": 0.0, "pn_count": 0
+            }
 
+        # 데이터 누적 (개별 그룹용)
+        g = agg[key]
+        g["count"] += 1
+        g["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
+        g["total_char_cnt"] += float(r.get("char_cnt", 0))
+        g["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0))
+        g["total_morph_cnt"] += float(r.get("morph_cnt", 0))
+        g["total_wrong_pn_char_cnt"] += float(r.get("wrong_pn_char_cnt", 0))
+        g["total_pn_char_cnt"] += float(r.get("pn_char_cnt", 0))
+        g["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0))
+        g["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))
+
+        # 고유명사(PN) 지표는 유효한 경우(None이 아님)에만 누적
         if r.get("pn_recall") is not None:
-            a["pn_recall_sum"] += float(r["pn_recall"])
-            a["pn_cer_sum"] += float(r["pn_cer"])
-            a["pn_count"] += 1
+            g["pn_recall_sum"] += float(r["pn_recall"])
+            g["pn_cer_sum"] += float(r["pn_cer"])
+            g["pn_count"] += 1
+            
+            # GT 누적
+            gt["pn_recall_sum"] += float(r["pn_recall"])
+            gt["pn_count"] += 1
 
-    out = []
-    for _, a in sorted(agg.items()):
-        out.append({
-                "top_k": a["top_k"],
-                "postprocess_on": a["postprocess_on"],
-                "hotwords_strategy": a["hotwords_strategy"],
-                "bias_weight_update_cnt": a["bias_weight_update_cnt"],
-                "used_file_num": AUDIO_FILE_MAX,
-                "cer": round(a["total_wrong_char_cnt"]/max(a["total_char_cnt"],1), 4),
-                "wer": round(a["total_wrong_morph_cnt"] / max(1, a["total_morph_cnt"]), 4),
-                "pn_recall_global": round(a["pn_recall_sum"] / max(1, a["pn_count"]), 4), 
-                "pn_cer_global": round(a["pn_cer_sum"] / max(1, a["pn_count"]), 4) 
-            })
+        # Grand Total(전체 합계) 누적
+        gt["file_count"] += 1
+        gt["total_wrong_char_cnt"] += float(r.get("wrong_char_cnt", 0))
+        gt["total_char_cnt"] += float(r.get("char_cnt", 0))
+        gt["total_wrong_morph_cnt"] += float(r.get("wrong_morph_cnt", 0))
+        gt["total_morph_cnt"] += float(r.get("morph_cnt", 0))
+        gt["total_wrong_pn_char_cnt"] += float(r.get("wrong_pn_char_cnt", 0))
+        gt["total_pn_char_cnt"] += float(r.get("pn_char_cnt", 0))
+        gt["total_wrong_pn_morph_cnt"] += float(r.get("wrong_pn_morph_cnt", 0))
+        gt["total_pn_morph_cnt"] += float(r.get("pn_morph_cnt", 0))
 
-    return out
+    # 집계된 데이터를 바탕으로 평균(CER, WER 등)을 계산하여 요약 리스트 생성
+    summary_rows = []
+    for key, stats in agg.items():
+        top_k, pp_on, strat, bias_cnt, hw, exp_type = key
+        
+        row = {
+            "experiment_type": exp_type,
+            "file": "Group_Average", # 개별 파일명이 아닌 평균임을 명시
+            "top_k": top_k, "postprocess_on": pp_on,
+            "hotwords_strategy": strat, "bias_weight_update_cnt": bias_cnt,
+            "hotwords": hw,
+            
+            # 0으로 나누기 방지 (max(..., 1))
+            "cer": f"{stats['total_wrong_char_cnt'] / max(stats['total_char_cnt'], 1):.4f}",
+            "wer": f"{stats['total_wrong_morph_cnt'] / max(stats['total_morph_cnt'], 1):.4f}",
+            "pn_recall": f"{stats['pn_recall_sum'] / max(stats['pn_count'], 1):.4f}",
+            "pn_cer": f"{stats['total_wrong_pn_char_cnt'] / max(stats['total_pn_char_cnt'], 1):.4f}",
+            "pn_wer": f"{stats['total_wrong_pn_morph_cnt'] / max(stats['total_pn_morph_cnt'], 1):.4f}",
+            
+            "replog": f"Files: {stats['count']}",
+            "total_file_cnt": stats['count'],
+        }
+        summary_rows.append(row)
+
+    # 마지막에 전체 평균(Grand Total) 행 추가
+    gt_row = {
+        "experiment_type": "TOTAL",
+        "file": total_label, # 예: PROPOSED_TOTAL_AVG
+        "hotwords": "ALL_AGGREGATED",
+        "cer": f"{gt['total_wrong_char_cnt'] / max(gt['total_char_cnt'], 1):.4f}",
+        "wer": f"{gt['total_wrong_morph_cnt'] / max(gt['total_morph_cnt'], 1):.4f}",
+        "pn_recall": f"{gt['pn_recall_sum'] / max(gt['pn_count'], 1):.4f}",
+        "pn_cer": f"{gt['total_wrong_pn_char_cnt'] / max(gt['total_pn_char_cnt'], 1):.4f}",
+        "pn_wer": f"{gt['total_wrong_pn_morph_cnt'] / max(gt['total_pn_morph_cnt'], 1):.4f}",
+        "replog": "Total_Sum",
+        "total_file_cnt": gt['file_count']
+    }
+    summary_rows.append(gt_row)
+    
+    return summary_rows
+
+def _create_summary_row(key, stats):
+    """요약 행을 생성하는 헬퍼 함수"""
+    top_k, pp_on, strat, bias_cnt, hw, exp_type = key
+    return {
+        "experiment_type": exp_type,
+        "file": "Group_Average",
+        "top_k": top_k, "postprocess_on": pp_on,
+        "hotwords_strategy": strat, "bias_weight_update_cnt": bias_cnt,
+        "hotwords": hw,
+        
+        "cer": f"{stats['total_wrong_char_cnt'] / max(stats['total_char_cnt'], 1):.4f}",
+        "wer": f"{stats['total_wrong_morph_cnt'] / max(stats['total_morph_cnt'], 1):.4f}",
+        "pn_recall": f"{stats['pn_recall_sum'] / max(stats['pn_count'], 1):.4f}",
+        "pn_cer": f"{stats['total_wrong_pn_char_cnt'] / max(stats['total_pn_char_cnt'], 1):.4f}",
+        "pn_wer": f"{stats['total_wrong_pn_morph_cnt'] / max(stats['total_pn_morph_cnt'], 1):.4f}",
+        
+        "replog": f"Files: {stats['count']}",
+        "total_file_cnt": stats['count'],
+    }
