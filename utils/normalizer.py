@@ -40,7 +40,7 @@ class TextNormalizer:
         self.units = [
             "번", "개", "단계", "편", "화", "회", "위", "배", "퍼센트",
             "분", "초", "시", "시간", "점", "일", "주", "달", "년대", "년",
-            "채널"
+            "채널", "호"
         ]
 
         # 긴 단위가 먼저 오도록 정렬 (시간 > 시)
@@ -60,6 +60,10 @@ class TextNormalizer:
             "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9
         }
         self._sino_unit = {"십": 10, "백": 100, "천": 1000}
+
+        self.number_anchors = [
+            "시즌", "에피소드", "파트", "챕터", "페이지", "넘버"
+        ]
 
     # -----------------------------
     # (기존) 0~999까지만 한글로 바꾸는 함수
@@ -136,7 +140,9 @@ class TextNormalizer:
         단, 단어 내부(추천의 '천' 등) 오염 방지.
         """
         # ? 길이 2 이상 + 앞이 한글/숫자면 금지 + (뒤는 단위/공백/끝이면 OK)
-        pattern = rf"(?<![0-9\uac00-\ud7a3])[영공일이삼사오육칠팔구십백천]{{2,}}(?=\s*(?:{self._unit_re}|\s|$))"
+        #pattern = rf"(?<![0-9\uac00-\ud7a3])[영공일이삼사오육칠팔구십백천]{{2,}}(?=\s*(?:{self._unit_re}|\s|$))"
+        pattern = rf"(?<![0-9\uac00-\ud7a3])[영공일이삼사오육칠팔구십백천]{{2,}}(?!만)(?=\s*(?:{self._unit_re}|\s|$))" # -만 제외
+
 
         def repl(m):
             tok = m.group()
@@ -167,6 +173,26 @@ class TextNormalizer:
         pattern = rf"(?<![0-9\uac00-\ud7a3])({sino_single})(?=\s*{self._unit_re})"
 
         return re.sub(pattern, lambda m: str(allowed[m.group(1)]), s)
+    
+    def _convert_sino_before_man(self, s: str) -> str:
+        """
+        '십만' -> '10만'
+        '육백오십만' -> '650만'
+        '천만' -> '1000만'
+        '칠백만' -> '700만'
+        ※ '만'은 유지하고, 앞 수사만 숫자로 변환
+        """
+        # '만' 앞에 오는 한자수사 블록만 캡처
+        pattern = rf"(?<![0-9])([영공일이삼사오육칠팔구십백천]+)만"
+
+        def repl(m):
+            sino = m.group(1)
+            val = self._parse_sino_number(sino)
+            if val is None:
+                return m.group(0)
+            return f"{val}만"
+
+        return re.sub(pattern, repl, s)
 
 
     def _convert_native_with_units(self, s: str) -> str:
@@ -187,6 +213,7 @@ class TextNormalizer:
             return f"{native[nword]}{unit}"
 
         return re.sub(pattern, repl, s)
+    
 
     def _join_number_units(self, s: str) -> str:
         # "10 개" -> "10개"
@@ -237,6 +264,24 @@ class TextNormalizer:
         s = str(text).lower().strip()
         s = re.sub(r",", " ", s)
 
+        # [ADD] 지시어 보호: 이번 주/달/년/년도
+        s = re.sub(
+            r"이번\s*(주|달|년|년도)",
+            r"지시어보호\1",
+            s
+        )
+
+        # [ADD] 번호 앵커 뒤 한자 수사 → 아라비아 숫자
+        anchor_re = "|".join(map(re.escape, self.number_anchors))
+
+        # ? 시즌/에피소드/파트/챕터/페이지/넘버 + 한자수사 → 숫자
+        s = re.sub(
+            rf"({anchor_re})\s*(일|이|삼|사|오|육|칠|팔|구|십)",
+            lambda m: m.group(1) + ("10" if m.group(2) == "십" else str(self._sino_val[m.group(2)])),
+            s
+        )
+
+
         # 0) 기존 구어 치환(열->십 등) 최소 반영 (단, eval에서는 1글자 치환 금지)
         #    - "한/두/세/열" 같은 1글자들은 단위 있을 때만 숫자화하도록(아래 단계1)로 보냄
         for k, v in self.num_sense_map.items():
@@ -252,6 +297,10 @@ class TextNormalizer:
 
         # 2) 자리수 읽기 -> 숫자 (일구팔팔 -> 1988)
         s = self._convert_digit_sequence(s)
+
+        # 2.5) '만' 앞 한자수사만 숫자로 변환 (십만->10만, 육백오십만->650만)
+        s = self._convert_sino_before_man(s)
+
 
         # 3) 한자식 수사(십/백/천 포함) -> 숫자 (이천십 -> 2010, 이십이 -> 22)
         s = self._convert_sino_numbers(s)
@@ -282,6 +331,10 @@ class TextNormalizer:
         else:
             s = re.sub(r"[^0-9\uac00-\ud7a3\s]", "", s)
             s = re.sub(r"\s+", " ", s).strip()
+
+        # [ADD] 지시어 복원
+        s = s.replace("지시어보호", "이번 ")
+        s = re.sub(rf"({anchor_re})\s*(\d+)", r"\1\2", s)
 
         return s
 
