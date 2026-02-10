@@ -174,13 +174,13 @@ class ASR:
     # 예: "가요톱텐, 강호동, 엠비씨 뉴스데스크, ..." 형태로 만듦
         dynamic_prompt = self.korean_only_prompt
 
-        PROMPT_HOTWORD_LIMIT = 10 
+        # PROMPT_HOTWORD_LIMIT = 10 
         
-        if hotwords and len(hotwords) > 0:
-            # 리스트 슬라이싱으로 개수 제한
-            safe_hotwords = hotwords[:PROMPT_HOTWORD_LIMIT]
-            hotword_str = ", ".join(safe_hotwords)
-            dynamic_prompt = f"{hotword_str}, {self.korean_only_prompt}"
+        # if hotwords and len(hotwords) > 0:
+        #     # 리스트 슬라이싱으로 개수 제한
+        #     safe_hotwords = hotwords[:PROMPT_HOTWORD_LIMIT]
+        #     hotword_str = ", ".join(safe_hotwords)
+        #     dynamic_prompt = f"{hotword_str}, {self.korean_only_prompt}"
 
         kwargs: Dict[str, Any] = {
             "language": lang,
