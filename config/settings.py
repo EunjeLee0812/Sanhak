@@ -39,9 +39,9 @@ ASR_BEAM = 3
 KOREAN_ONLY_PROMPT = "엠비씨 뉴스데스크, 티브이엔 유퀴즈, 넷플릭스 파친코 틀어줘, 볼륨 십으로 올려줘, 삼십 분 뒤에 티비 꺼줘, 채널 이십이 번으로 바꿔줘, 에이, 비, 씨, 디, 하나, 둘, 셋, 삼십 초, 오 분, 세 칸, 일 배속"
 
 # 후처리 임계값
-RULE_WRATIO_TH = 92
-RULE_GATE = 0.34
-RULE_TOL = 2
+RULE_WRATIO_TH = 60
+RULE_GATE = 0.8
+RULE_TOL = 5
 
 #가중치 업데이트 관련 파라미터 추가
 PN_MATCH_TH   = float(os.environ.get("PN_MATCH_TH", "0.20"))   # pn_recall 계산용

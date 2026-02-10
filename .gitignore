@@ -8,6 +8,7 @@ __pycache__/
 biasing_list.json
 __init__.py
 makelist.py
+settings.py
 
 # jupyter notebook 관련
 .ipynb_checkpoints/
