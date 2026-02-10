@@ -144,7 +144,7 @@ class BiasManager:
             return self.get_weighted_hotwords_random(top_k)
         elif mode == 2:
             # Hybrid 전략: Exploit + Explore
-            return self.get_weighted_hotwords_hybrid(top_k, n_fixed=8)
+            return self.get_weighted_hotwords_hybrid(top_k)
 
     def get_weighted_hotwords_random(self, top_k: int) -> List[str]:
         """
@@ -189,6 +189,9 @@ class BiasManager:
         # 예외 처리: top_k가 0 이하면 빈 리스트 반환
         if top_k <= 0: 
             return []
+
+        if not words:
+            return []
         
         # 1. 모든 단어 추출
         # self.data["global"].keys() → ["엠비씨", "뉴스", ...]
@@ -203,118 +206,9 @@ class BiasManager:
         # random.choices: 복원 추출 (중복 가능)
         # k: 선택할 개수 (top_k와 전체 단어 수 중 작은 값)
         return random.choices(words, weights=weights, k=min(top_k, len(words)))
-"""
-    def get_weighted_hotwords_hybrid(self, top_k: int, n_fixed: int = 8) -> List[str]:
-        
-        # Hybrid 전략(개선판):
-        # - Exploit: 가중치 상위 n_fixed개는 "항상" 포함 (고정 슬롯)
-        # - Explore: 나머지는 (1) 가중치 기반 random.choices + (2) 균등 random.sample 섞어서 선택
-        # - 최종 결과는 길이 top_k를 최대한 맞추고, 중복 제거
-        
-        if top_k <= 0: return []
-
-        words = list(self.data.get("global", {}).keys())
-        if not words: 
-            return []
-
-        # 2. 가중치 내림차순 정렬
-        # key: 정렬 기준 함수 (가중치 값으로 정렬)
-        # reverse=True: 높은 값부터 (내림차순)
-        sorted_words = sorted(
-            words, 
-            key=lambda w: float(self.data["global"].get(w, 0.0)), 
-            reverse=True
-        )
-        # 결과 예: ["A"(10.0), "B"(8.0), "C"(5.0), ...]
-
-        # 3. n_fixed 범위 조정
-        # n_fixed는 top_k와 전체 단어 수를 넘을 수 없음
-        # max(0, ...): 음수 방지
-        # min(...): 상한 제한
-        n_fixed = max(0, min(int(n_fixed), top_k, len(sorted_words)))
-
-        # 4. Exploit: 상위 n_fixed개 고정 포함
-        fixed = sorted_words[:n_fixed]
-        # 예: n_fixed=8이면 상위 8개를 fixed에 저장
-
-        # 5. Explore: 나머지 top_k - n_fixed개 채우기
-        remain_k = top_k - len(fixed)
-        
-        # 고정 슬롯으로 이미 다 채워진 경우
-        if remain_k <= 0: 
-            return fixed[:top_k]
-
-        # 탐색 풀: 고정된 단어를 제외한 나머지
-        explore_pool = sorted_words[n_fixed:]
-        
-        # 탐색 풀이 비어있으면 fixed만 반환
-        if not explore_pool: 
-            return fixed
-
-        # 6. Explore를 두 부분으로 나눔
-        # 절반은 가중치 기반, 절반은 균등 샘플링
-        n_weighted = remain_k // 2      # 가중치 기반 개수
-        n_uniform = remain_k - n_weighted  # 균등 샘플링 개수
-
-        # 6-1. 가중치 기반 샘플링 (Weighted Random)
-        # explore_pool의 각 단어에 대해 가중치 추출 (+1.0)
-        weights = [float(self.data["global"].get(w, 0.0)) + 1.0 for w in explore_pool]
-        
-        # random.choices: 가중치 기반 복원 추출
-        chosen_weighted = random.choices(
-            explore_pool, 
-            weights=weights, 
-            k=min(n_weighted, len(explore_pool))
-        )
-
-        # 6-2. 균등 샘플링 (Uniform Random)
-        # 이미 가중치 기반으로 뽑힌 단어는 제외
-        explore_pool_2 = [w for w in explore_pool if w not in set(chosen_weighted)]
-        
-        # random.sample: 균등 확률로 비복원 추출
-        chosen_uniform = random.sample(
-            explore_pool_2, 
-            k=min(n_uniform, len(explore_pool_2))
-        ) if explore_pool_2 else []
-
-        # 7. 합치고 중복 제거
-        # 순서: fixed → chosen_weighted → chosen_uniform
-        out = []
-        seen = set()
-        
-        for w in fixed + chosen_weighted + chosen_uniform:
-            # 중복 체크
-            if w not in seen:
-                seen.add(w)
-                out.append(w)
-
-        # 8. 부족분 채우기
-        # 중복 제거로 인해 out 길이가 top_k보다 작을 수 있음
-        if len(out) < top_k:
-            # 아직 선택되지 않은 단어들
-            leftovers = [w for w in sorted_words if w not in seen]
-            
-            if leftovers:
-                need = top_k - len(out)  # 필요한 개수
-                
-                # 남은 단어들의 가중치 추출
-                lw = [float(self.data["global"].get(w, 0.0)) + 1.0 for w in leftovers]
-                
-                # 가중치 기반으로 추가 샘플링
-                extra = random.choices(leftovers, weights=lw, k=min(need, len(leftovers)))
-                
-                # 중복 체크하며 추가
-                for w in extra:
-                    if w not in seen:
-                        seen.add(w)
-                        out.append(w)
-
-        # 9. 최종 결과 반환 (정확히 top_k개)
-        return out[:top_k]
-"""
 
 
-    def get_weighted_hotwords_ticket(self, top_k: int) -> List[str]:
+    def get_weighted_hotwords_hybrid(self, top_k: int) -> List[str]:
         """
         [수정된 알고리즘]
         1. Top 50%: 가중치가 가장 높은 상위 단어들을 고정으로 선택 (Exploit)
@@ -429,4 +323,4 @@ class BiasManager:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
         
         # 4. 로그 출력
-        print(f"\n[LEARNING] {repeat+1}회차 가중치 누적 저장 완료. (반복횟수={self.data['ref_count']})")
+        print(f"\n[LEARNING] {bias_weight_update_cnt+1}회차 가중치 누적 저장 완료. (반복횟수={self.data['ref_count']})")
