@@ -190,13 +190,13 @@ class BiasManager:
         if top_k <= 0: 
             return []
 
-        if not words:
-            return []
         
         # 1. 모든 단어 추출
         # self.data["global"].keys() → ["엠비씨", "뉴스", ...]
         words = list(self.data["global"].keys())
         
+        if not words:
+            return []
         # 2. 각 단어의 가중치 추출 및 +1.0
         # +1.0 이유: 가중치가 0인 단어도 선택 가능하도록
         # 예: 가중치 0.0 → 1.0 (최소한의 선택 확률 보장)
