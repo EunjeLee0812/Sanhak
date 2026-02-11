@@ -210,6 +210,12 @@ class TextNormalizer:
         def repl(m):
             nword = m.group(1)
             unit = m.group(2)
+
+            # ✅ [핵심 예외 처리]
+            # "한" + "일" 조합은 "1일"이 아니라 "했던 일(Work)"일 확률이 높으므로 변환 Skip
+            if nword == "한" and unit == "일":
+                return m.group(0) # 원본 문자열("한 일") 그대로 반환
+                
             return f"{native[nword]}{unit}"
 
         return re.sub(pattern, repl, s)

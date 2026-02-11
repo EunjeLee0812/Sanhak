@@ -48,60 +48,32 @@ def calculate_cer(ref: str, hyp: str, normalizer) -> Tuple[float, float, int]:
     #     return (0.0 if not h else 1.0), (0.0 if not h else float(len(h))), 0
     return Levenshtein.distance(r, h) / len(r), Levenshtein.distance(r,h), len(r)
 
-def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None, ref_ref_pn:List[str]=[],hyp_ref_pn:List[str]=[])-> Tuple[float, float, int,List,List]:
-    normalizer = normalizer or _get_normalizer()
-    mecab = mecab or _get_mecab()
+def calculate_wer(ref: str, hyp: str,  normalizer=None, mecab=None)-> Tuple[float, float, int,List,List]:
 
-    # 평가용 normalizer로 변경
-    ref_text = normalizer.normalize_for_eval(ref, remove_space=False)
-    hyp_text = normalizer.normalize_for_eval(hyp, remove_space=False)
-
-    # 2. 고유명사 보호 (Masking)
-    # ref_ref_pn, hyp_ref_pn 리스트에 있는 단어들을 Mecab이 쪼개지 못하도록 치환
-    # 예: "제이티비씨" -> "UNKTOKEN0"
-    protected_map_ref_ref_pn = {}
-    if ref_ref_pn:
-        # 긴 단어부터 치환해야 함
-        sorted_ref_pn = sorted(ref_ref_pn, key=len, reverse=True)
-        for i, ref_pn in enumerate(sorted_ref_pn):
-            # 평가용 normalizer로 교체
-            ref_pn_norm = normalizer.normalize_for_eval(ref_pn, remove_space=True)
-            #예외처리
-            if ref_pn_norm=="": continue
-
-            token = f"PROT{string.ascii_uppercase[i]}"
-            protected_map_ref_ref_pn[token] = ref_pn_norm
-            
-            # 텍스트에서 치환
-            ref_text = ref_text.replace(ref_pn_norm, token)
-
-    protected_map_hyp_ref_pn = {}
-    if hyp_ref_pn:
-        # 긴 단어부터 치환해야 함
-        sorted_hyp_ref_pn = sorted(hyp_ref_pn, key=len, reverse=True)
-        for i, hyp_pn in enumerate(sorted_hyp_ref_pn):
-            # 평가용 normalizer로 교체
-            hyp_ref_pn_norm = normalizer.normalize_for_eval(hyp_pn, remove_space=True)
-
-            if hyp_ref_pn_norm=="": continue
-
-            token = f"PROT{string.ascii_uppercase[i]}"
-            protected_map_hyp_ref_pn[token] = hyp_ref_pn_norm
-            
-            # 텍스트에서 치환
-            hyp_text = hyp_text.replace(hyp_ref_pn_norm, token)
-            
-    ref_morphs, hyp_morphs = mecab.morphs(ref_text), mecab.morphs(hyp_text)
+    # 2. [핵심 수정] WER 계산 시에는 띄어쓰기 영향을 무시하기 위해 공백을 제거하고 형태소 분석 수행
+    #    (한국어 ASR 챌린지 등에서도 '띄어쓰기'는 평가 항목에서 제외하는 경우가 많음)
     
-    # print(protected_map_hyp_ref_pn, hyp_morphs)
+    # 방법 A: normalizer의 remove_space=True 옵션 활용 (추천)
+    r_for_wer = normalizer.normalize_for_eval(ref, remove_space=True)
+    h_for_wer = normalizer.normalize_for_eval(hyp, remove_space=True)
     
-    # 3. 보호된 토큰 복원 (Unmasking)
-    # ['SPECIALref_pn0', '틀어줘'] -> ['제이티비씨', '틀어줘']
-    final_ref_morphs = [protected_map_ref_ref_pn.get(m, m) for m in ref_morphs]
-    final_hyp_morphs = [protected_map_hyp_ref_pn.get(m, m) for m in hyp_morphs]    
-    # if not ref_morphs:
-    #     return 0.0 if not hyp_morphs else 1.0
-    return Levenshtein.distance(final_ref_morphs, final_hyp_morphs) / len(final_ref_morphs), Levenshtein.distance(final_ref_morphs, final_hyp_morphs), len(final_ref_morphs), final_ref_morphs, final_hyp_morphs
+    # 방법 B: 그냥 replace 사용 (normalizer 로직에 따라 선택)
+    # r_for_wer = ref.replace(" ", "")
+    # h_for_wer = hyp.replace(" ", "")
+
+    # 3. 공백이 제거된 문자열을 MeCab으로 분절
+    # 입력이 같으므로 MeCab은 무조건 같은 결과를 뱉음 -> WER 0.0 달성
+    ref_morphs = mecab.morphs(r_for_wer)
+    hyp_morphs = mecab.morphs(h_for_wer)
+
+    # 4. Levenshtein 거리 계산 (기존 로직 동일)
+    dist = Levenshtein.distance(ref_morphs, hyp_morphs)
+    length = len(ref_morphs)
+    
+    wer = dist / length if length > 0 else 0.0
+
+    return wer, dist, length, ref_morphs, hyp_morphs 
+
 
 #인식된 고유명사를 정답 고유명사와 비교해 인식 결과를 교정하는 데 도움을 주는 함수
 #수정: 고유명사 매칭에서 1글자(너무 짧은 조각)는 후보에서 제외하기
@@ -248,14 +220,13 @@ def evaluate_proper_nouns(
         else:
             # [NEW] 텍스트 교정 로직
             # matched_sub(인식된 텍스트, 예: '애플티비 플러스')를 ref_pn(정답, 예: '애플티비플러스')로 교체
-            if match_sub and matched_sub in hyp_final:
+            if matched_sub and matched_sub in hyp_final:
                 # replace는 모든 등장 횟수를 바꾸므로 주의가 필요하지만, 
                 # 고유명사는 문장 내 유일한 경우가 많으므로 현재 단계에선 유효함.
                 hyp_final = hyp_final.replace(matched_sub, ref_pn)
 
             # 핫워드 적중 체크 (맞힌 경우에만 체크하는 것이 논리적으로 맞음)
-            ref_pn_norm = normalizer.normalize(ref_pn, remove_space=True)
-            if ref_pn_norm in hotwords_norm_set:
+            if ref_pn in hotwords_norm_set:
                 hotwords_hit.append(ref_pn)
         
         # 결과 정리 (1글자 짜리는 노이즈로 보고 빈값 처리)
